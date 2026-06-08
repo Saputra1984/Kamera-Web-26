@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kamera Web</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body, html { width: 100%; height: 100%; background: #000; font-family: sans-serif; overflow: hidden; }
+        .camera-container { width: 100%; height: 100%; position: absolute; overflow: hidden; }
+        #camera-view { width: 100%; height: 100%; object-fit: cover; position: absolute; transition: transform 0.1s ease-out; }
+        .stabilized-active { transform: scale(1.05); }
+        #focus-ring { position: absolute; width: 75px; height: 75px; border: 2px dashed #00e5ff; border-radius: 50%; pointer-events: none; display: none; z-index: 5; transform: translate(-50%, -50%); }
+        #focus-ring.face-on { border-color: #39ff14; border-radius: 12px; }
+        .top-bar { position: absolute; top: 20px; right: 20px; z-index: 10; }
+        .triple-dot { font-size: 28px; color: #fff; background: rgba(0,0,0,0.4); border: none; padding: 5px 15px; border-radius: 50%; cursor: pointer; backdrop-filter: blur(5px); }
+        
+        /* Menu Menurun Menggantung Setengah Layar */
+        .menu-dropdown { 
+            display: none; position: absolute; top: 70px; right: 20px; 
+            background: rgba(15, 15, 15, 0.95); border-radius: 14px; width: 210px; 
+            max-height: 260px; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.8); 
+            border: 1px solid rgba(255, 255, 255, 0.15); z-index: 99; backdrop-filter: blur(10px);
+            -webkit-overflow-scrolling: touch;
+        }
+        .menu-dropdown::-webkit-scrollbar { width: 4px; }
+        .menu-dropdown::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.3); border-radius: 10px; }
+        .menu-dropdown button { 
+            width: 100%; padding: 14px 16px; background: none; border: none; color: #fff; 
+            text-align: left; font-size: 14px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.05); display: block;
+        }
+        .menu-dropdown button:active { background: rgba(0, 229, 255, 0.2); color: #00e5ff; }
+        .menu-dropdown button.active { color: #00e5ff; font-weight: bold; }
+
+        .side-controls { position: absolute; left: 15px; top: 30%; display: flex; flex-direction: column; gap: 25px; z-index: 10; background: rgba(0,0,0,0.4); padding: 15px 10px; border-radius: 15px; backdrop-filter: blur(5px); }
+        .slider-group { display: flex; flex-direction: column; align-items: center; color: #fff; font-size: 10px; gap: 8px; }
+        .v-slider { writing-mode: bt-lr; -webkit-appearance: slider-vertical; width: 6px; height: 110px; background: #555; border-radius: 3px; outline: none; }
+        #timer-display { position: absolute; top: 25%; left: 50%; transform: translateX(-50%); font-size: 90px; color: #fff; font-weight: bold; z-index: 12; pointer-events: none; }
+        .bottom-bar { position: absolute; bottom: 40px; width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 35px; z-index: 10; }
+        .gallery-slot { width: 65px; height: 65px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.1) center/cover; cursor: pointer; }
+        .shutter-btn { width: 80px; height: 80px; border-radius: 50%; background: #fff; border: 5px solid rgba(0,0,0,0.2); box-shadow: 0 0 0 4px #fff; cursor: pointer; }
+        .shutter-btn.video-mode { background: #ff3b30; box-shadow: 0 0 0 4px #ff3b30; }
+        .right-controls { display: flex; flex-direction: column; gap: 12px; z-index: 10; }
+        .control-btn { width: 48px; height: 48px; border-radius: 50%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.7); color: #fff; font-size: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+        /* CSS Modal Gallery Zoom & Geser */
+        .gallery-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 100; justify-content: center; align-items: center; overflow: hidden; }
+        #modal-image { max-width: 100%; max-height: 100%; object-fit: contain; transition: transform 0.05s ease-out; transform-origin: center center; }
+        .close-gallery-btn { position: absolute; top: 25px; left: 25px; width: 45px; height: 45px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.4); color: #fff; font-size: 20px; display: flex; align-items: center; justify-content: center; z-index: 101; }
+    </style>
+</head>
+<body>
+
+    <div class="camera-container" onclick="triggerManualFocus(event)">
+        <video id="camera-view" autoplay playsinline muted></video>
+        <div id="focus-ring"></div>
+    </div>
+    <div id="timer-display"></div>
+    <div class="side-controls">
+        <div class="slider-group"><span>ZOOM</span><input type="range" class="v-slider" id="zoomSlider" min="1" max="8" step="0.1" value="1" oninput="setZoom(this.value)"></div>
+        <div class="slider-group"><span>BRIGHT</span><input type="range" class="v-slider" id="expSlider" min="-3" max="3" step="0.5" value="0" oninput="setExposure(this.value)"></div>
+    </div>
+    <div class="top-bar">
+        <button class="triple-dot" onclick="toggleMenuBox()">⋮</button>
+        <div id="dropdownMenu" class="menu-dropdown"></div>
+    </div>
+    <div class="bottom-bar">
+        <div id="gallery_preview" class="gallery-slot" onclick="runAction('openGallery')"></div>
+        <button id="shutter_btn" class="shutter-btn" onclick="runAction('capture')"></button>
+        <div class="right-controls" id="right_actions_container"></div>
+    </div>
+    <div id="galleryModal" class="gallery-modal"><button class="close-gallery-btn" onclick="closePhotoGallery()">✕</button><img id="modal-image" src="" alt="Preview"></div>
+
+    <script>
+        let cameraConfig = null;
+        let activeStream = null, activeVideoTrack = null;
+        let isFrontCamera = false, currentActiveMode = "camera";
+        let selectedFormat = "webp", selectedSharpness = "standar", selectedColorMode = "natural";
+        let isStabilizerRunning = false, isFaceTrackingOn = false, currentTimerValue = 0;
+        let mediaRecorderEngine = null, chunkedVideoData = [];
+        let initialTouchDistance = 0, initialZoomValue = 1;
+        
+        // State Variabel Galeri Zoom & Geser
+        let lastCapturedPhotoData = null;
+        let galleryZoomScale = 1, galleryPanX = 0, galleryPanY = 0;
+        let isDraggingGallery = false, startDragX = 0, startDragY = 0;
+        let galleryInitialTouchDist = 0, galleryInitialScale = 1;
+
+        // Ambil data JSON secara dinamis dari folder lokal GitHub
+        async function loadConfigJSON() {
+            try {
+                const response = await fetch('camera_config.json');
+                cameraConfig = await response.json();
+                deployEngineFromJSON();
+            } catch (err) {
+                alert("Gagal membaca kamus JSON di GitHub: " + err);
+            }
+        }
+
+        function deployEngineFromJSON() {
+            const menuContainer = document.getElementById('dropdownMenu');
+            menuContainer.innerHTML = '';
+            cameraConfig.menu_titik_tiga.forEach(buttonData => {
+                const btn = document.createElement('button');
+                btn.id = buttonData.id; btn.innerText = buttonData.label;
+                btn.onclick = () => { handleMenuLogic(buttonData.action, buttonData.value); toggleMenuBox(); };
+                menuContainer.appendChild(btn);
+            });
+            const rightContainer = document.getElementById('right_actions_container');
+            rightContainer.innerHTML = '';
+            cameraConfig.navigation_buttons.right_bottom.forEach(navData => {
+                const navBtn = document.createElement('button');
+                navBtn.className = "control-btn"; navBtn.id = navData.id; navBtn.innerText = navData.label;
+                navBtn.onclick = () => runAction(navData.action);
+                rightContainer.appendChild(navBtn);
+            });
+        }
+
+        async function bootCameraSensor() {
+            if (activeStream) activeStream.getTracks().forEach(track => track.stop());
+            try {
+                activeStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: isFrontCamera ? "user" : "environment", width: { ideal: 3840 }, height: { ideal: 2160 } },
+                    audio: true
+                });
+                document.getElementById('camera-view').srcObject = activeStream;
+                activeVideoTrack = activeStream.getVideoTracks()[0];
+                setTimeout(syncHardwareSliders, 800);
+            } catch (err) { console.log("Sensor kamera tertahan pengamanan HTTPS lokal."); }
+        }
+
+        function syncHardwareSliders() {
+            if(!activeVideoTrack || !activeVideoTrack.getCapabilities) return;
+            const cap = activeVideoTrack.getCapabilities();
+            const zSlider = document.getElementById('zoomSlider');
+            if(cap.zoom) zSlider.max = cap.zoom.max * cameraConfig.camera_features.zoom.extreme_digital_multiplier;
+        }
+
+        function setZoom(val) {
+            if(!activeVideoTrack) return;
+            const zSlider = document.getElementById('zoomSlider');
+            val = Math.max(parseFloat(zSlider.min), Math.min(val, parseFloat(zSlider.max)));
+            zSlider.value = val;
+            activeVideoTrack.applyConstraints({ advanced: [{ zoom: val }] }).catch(() => {
+                document.getElementById('camera-view').style.transform = `scale(${1 + (val * 0.3)})`;
+            });
+        }
+
+        function setExposure(val) { applyLiveFilters(); }
+
+        function applyLiveFilters() {
+            if(!cameraConfig) return;
+            const video = document.getElementById('camera-view');
+            const expVal = document.getElementById('expSlider').value;
+            const colorCss = cameraConfig.camera_features.color_filters[selectedColorMode];
+            const sharpData = cameraConfig.sharpness_modes[selectedSharpness];
+            video.style.filter = `${colorCss} ${sharpData.filter_css} brightness(${1 + (expVal * 0.2)})`;
+        }
+
+        function runAction(actionName) {
+            if (actionName === 'switchCamera') { isFrontCamera = !isFrontCamera; bootCameraSensor(); }
+            else if (actionName === 'switchMode') {
+                currentActiveMode = currentActiveMode === "camera" ? "video" : "camera";
+                document.getElementById('switch_mode').innerText = currentActiveMode === "camera" ? "📸" : "📹";
+                document.getElementById('shutter_btn').className = currentActiveMode === "video" ? "shutter-btn video-mode" : "shutter-btn";
+            } else if (actionName === 'cycleTimer') {
+                const options = cameraConfig.camera_features.timer_options;
+                currentTimerValue = options[(options.indexOf(currentTimerValue) + 1) % options.length];
+                document.getElementById('trigger_timer').innerText = currentTimerValue === 0 ? "⏱️" : `${currentTimerValue}s`;
+            } else if (actionName === 'capture') { triggerTimerWorkflow(); }
+            else if (actionName === 'openGallery') {
+                if (!lastCapturedPhotoData) { alert("Belum ada foto. Gunakan gambar pancingan atau jepret dulu!"); return; }
+                openPhotoGallery();
+            }
+        }
+
+        function handleMenuLogic(action, targetValue) {
+            if(action === "setFormat") selectedFormat = targetValue;
+            if(action === "setSharpness") { selectedSharpness = targetValue; applyLiveFilters(); }
+            if(action === "setColorMode") { selectedColorMode = targetValue; applyLiveFilters(); }
+            if(action === "toggleStability") { isStabilizerRunning = !isStabilizerRunning; document.getElementById('camera-view').className = isStabilizerRunning ? "stabilized-active" : ""; }
+            if(action === "toggleFaceSensor") isFaceTrackingOn = !isFaceTrackingOn;
+        }
+
+        function triggerTimerWorkflow() {
+            if (currentTimerValue > 0) {
+                let counter = currentTimerValue;
+                const clock = document.getElementById('timer-display');
+                clock.innerText = counter;
+                const interval = setInterval(() => {
+                    counter--; clock.innerText = counter > 0 ? counter : "";
+                    if (counter <= 0) { clearInterval(interval); processCaptureOutput(); }
+                }, 1000);
+            } else { processCaptureOutput(); }
+        }
+
+        function processCaptureOutput() { if (currentActiveMode === "camera") executePhotoShot(); else executeVideoRecording(); }
+
+        function executePhotoShot() {
+            const video = document.getElementById('camera-view');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth || 1280; canvas.height = video.videoHeight || 720;
+            const ctx = canvas.getContext('2d');
+            ctx.filter = video.style.filter;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            if(isFaceTrackingOn) {
+                const ring = document.getElementById('focus-ring');
+                ring.style.left = "50%"; ring.style.top = "50%"; ring.className = "face-on"; ring.style.display = "block";
+                setTimeout(() => { ring.style.display = "none"; }, 800);
+            }
+
+            let targetMime = `image/${selectedFormat}`;
+            if(selectedFormat === 'heic') targetMime = 'image/webp';
+            const finalizedDataURL = canvas.toDataURL(targetMime, 0.96);
+            
+            lastCapturedPhotoData = finalizedDataURL;
+            document.getElementById('gallery_preview').style.backgroundImage = `url(${finalizedDataURL})`;
+
+            if (selectedFormat === "pdf") {
+                const { jsPDF } = window.jspdf;
+                const pdfDoc = new jsPDF({ orientation: "l", unit: "px", format: [canvas.width, canvas.height] });
+                pdfDoc.addImage(finalizedDataURL, 'JPEG', 0, 0, canvas.width, canvas.height);
+                pdfDoc.save(`CAM_${Date.now()}.pdf`);
+            } else {
+                const a = document.createElement('a'); a.download = `CAM_${Date.now()}.${selectedFormat}`; a.href = finalizedDataURL; a.click();
+            }
+        }
+
+        function executeVideoRecording() {
+            if (mediaRecorderEngine && mediaRecorderEngine.state === "recording") { mediaRecorderEngine.stop(); return; }
+            chunkedVideoData = [];
+            try {
+                mediaRecorderEngine = new MediaRecorder(activeStream);
+                mediaRecorderEngine.ondataavailable = (e) => { if (e.data.size > 0) chunkedVideoData.push(e.data); };
+                mediaRecorderEngine.onstop = () => {
+                    const blob = new Blob(chunkedVideoData, { type: 'video/mp4' });
+                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `VIDEO_${Date.now()}.mp4`; a.click();
+                };
+                mediaRecorderEngine.start();
+            } catch (err) { alert("Perekaman gagal di lingkungan lokal."); }
+        }
+
+        function getTouchDistance(e) {
+            return Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2));
+        }
+
+        // FUNGSI GALERI PREVIEW MULTI-ARAH
+        function openPhotoGallery() {
+            const modal = document.getElementById('galleryModal');
+            galleryZoomScale = 1; galleryPanX = 0; galleryPanY = 0;
+            document.getElementById('modal-image').src = lastCapturedPhotoData;
+            updateGalleryTransform();
+            modal.style.display = 'flex';
+            initGalleryTouchControls(modal);
+        }
+
+        function closePhotoGallery() { document.getElementById('galleryModal').style.display = 'none'; }
+        function updateGalleryTransform() { document.getElementById('modal-image').style.transform = `translate(${galleryPanX}px, ${galleryPanY}px) scale(${galleryZoomScale})`; }
+
+        function initGalleryTouchControls(modalElement) {
+            modalElement.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) { isDraggingGallery = true; startDragX = e.touches[0].clientX - galleryPanX; startDragY = e.touches[0].clientY - galleryPanY; }
+                else if (e.touches.length === 2) { isDraggingGallery = false; galleryInitialTouchDist = getTouchDistance(e); galleryInitialScale = galleryZoomScale; }
+            });
+            modalElement.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                if (e.touches.length === 1 && isDraggingGallery) { galleryPanX = e.touches[0].clientX - startDragX; galleryPanY = e.touches[0].clientY - startDragY; updateGalleryTransform(); }
+                else if (e.touches.length === 2) {
+                    galleryZoomScale = Math.max(1, Math.min(galleryInitialScale * (getTouchDistance(e) / galleryInitialTouchDist), 15));
+                    updateGalleryTransform();
+                }
+            });
+            modalElement.addEventListener('touchend', (e) => { if (e.touches.length === 0) isDraggingGallery = false; });
+        }
+
+        function triggerManualFocus(e) {
+            const dropdown = document.getElementById('dropdownMenu');
+            if (dropdown.style.display === 'block') { dropdown.style.display = 'none'; return; }
+            if(e.target.id !== "camera-view") return;
+            const ring = document.getElementById('focus-ring');
+            ring.style.left = `${e.clientX}px`; ring.style.top = `${e.clientY}px`; ring.style.display = 'block';
+            setTimeout(() => { ring.style.display = 'none'; }, 1000);
+        }
+
+        function toggleMenuBox() {
+            const dropdown = document.getElementById('dropdownMenu');
+            dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+        }
+
+        window.onload = () => {
+            loadConfigJSON();
+            bootCameraSensor();
+            if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+
+            // Gambar pancingan awal sebelum kamera asli aktif di GitHub
+            lastCapturedPhotoData = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1200";
+            document.getElementById('gallery_preview').style.backgroundImage = `url(${lastCapturedPhotoData})`;
+
+            // Gesture 2 Jari Kamera Live
+            const cameraContainer = document.querySelector('.camera-container');
+            const zSlider = document.getElementById('zoomSlider');
+            cameraContainer.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { initialTouchDistance = getTouchDistance(e); initialZoomValue = parseFloat(zSlider.value); } });
+            cameraContainer.addEventListener('touchmove', (e) => {
+                if (e.touches.length === 2 && initialTouchDistance > 0) {
+                    e.preventDefault();
+                    setZoom(initialZoomValue * (getTouchDistance(e) / initialTouchDistance));
+                }
+            });
+            cameraContainer.addEventListener('touchend', (e) => { if (e.touches.length < 2) initialTouchDistance = 0; });
+        };
+    </script>
+</body>
+      </html>
