@@ -1,0 +1,16 @@
+{
+  "name": "Kamera Web Resmi",
+  "short_name": "Kamera Web",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/685/685655.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
