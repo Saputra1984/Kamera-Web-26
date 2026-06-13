@@ -1,0 +1,155 @@
+{
+  "app_metadata": {
+    "application_name": "Kamera Web",
+    "version": "1.0.0",
+    "device_target": "Xiaomi 2GB RAM",
+    "stability_mode": "hardware_assisted"
+  },
+  
+  "settings": {
+    "default_format": "webp_max",
+    "default_sharpness": "max",
+    "default_color_mode": "natural"
+  },
+
+  "sharpness_modes": {
+    "low": { "contrast": 0.9, "brightness": 1.0, "sharpness_filter": "none" },
+    "standar": { "contrast": 1.0, "brightness": 1.0, "sharpness_filter": "none" },
+    "max": { "contrast": 1.15, "brightness": 1.02, "sharpness_filter": "contrast(1.15) brightness(1.02)" }
+  },
+
+  "camera_features": {
+    "zoom": { "current": 1, "max_hardware": "auto", "extreme_digital_multiplier": 4 },
+    "exposure": { "current": 0, "min": -3, "max": 3, "step": 0.5 },
+    "timer_options": [0, 3, 5, 10],
+    "color_filters": {
+      "asli": "saturate(1.0) contrast(1.0)",
+      "fokus_warna": "saturate(1.8) contrast(1.1)",
+      "natural": "saturate(1.1) contrast(0.95)",
+      "malam": "saturate(1.2) contrast(1.3) brightness(1.6)",
+      "teks": "saturate(0.0) contrast(1.8) brightness(0.9)"
+    }
+  },
+
+  "navigation_buttons": {
+    "left_bottom": { 
+      "id": "gallery_preview", 
+      "type": "preview", 
+      "action": "openGallery",
+      "ui_coordinate": { "position": "absolute", "bottom": "20px", "left": "20px", "z_index": 15, "width_px": 55, "height_px": 55 }
+    },
+    "center_bottom": { 
+      "id": "shutter_btn", 
+      "type": "trigger", 
+      "action": "capture",
+      "ui_coordinate": { "position": "absolute", "bottom": "15px", "left": "50%", "transform": "translateX(-50%)", "z_index": 15, "width_px": 68, "height_px": 68 }
+    },
+    "right_bottom_group": {
+      "container_id": "right_actions_container",
+      "ui_coordinate": { "position": "absolute", "bottom": "15px", "right": "20px", "z_index": 15, "display": "flex", "flex_direction": "column", "gap_px": 10 },
+      "buttons": [
+        { "id": "switch_camera", "type": "toggle", "action": "switchCamera", "label": "🔄", "width_px": 45, "height_px": 45 },
+        { "id": "switch_mode", "type": "toggle", "action": "switchMode", "label": "📸/📹", "width_px": 45, "height_px": 45 }
+      ]
+    },
+    "left_mid_controls": {
+      "timer_button": {
+        "id": "timer_btn",
+        "type": "trigger",
+        "action": "cycleTimer",
+        "label": "⏱️",
+        "ui_coordinate": { "position": "absolute", "top": "30%", "left": "20px", "z_index": 10, "width_px": 45, "height_px": 45 }
+      },
+      "brightness_slider": {
+        "id": "expSlider",
+        "type": "slider",
+        "action": "setExposure",
+        "min": -3,
+        "max": 3,
+        "step": 0.5,
+        "ui_coordinate": { "position": "absolute", "top": "55%", "left": "20px", "z_index": 10, "transform": "rotate(-90deg)", "transform_origin": "left center", "width_px": 150 }
+      }
+    },
+    "top_bar_controls": {
+      "menu_button": {
+        "id": "triple_dot_btn",
+        "type": "trigger",
+        "action": "toggleMenuBox",
+        "label": "⋮",
+        "ui_coordinate": { "position": "absolute", "top": "15px", "right": "15px", "z_index": 10, "font_size_px": 28 }
+      },
+      "dropdown_box": {
+        "id": "dropdownMenu",
+        "ui_coordinate": { "position": "absolute", "top": "60px", "right": "15px", "z_index": 20, "max_height": "50vh", "overflow_y": "auto" }
+      }
+    },
+    "global_viewfinder": {
+      "id": "camera-view",
+      "ui_coordinate": { "position": "absolute", "top": 0, "left": 0, "width": "100%", "height": "100%", "z_index": 1, "object_fit": "cover" },
+      "interaction": { "on_click": "close_menu_and_trigger_focus", "on_pinch": "extreme_digital_zoom" }
+    }
+  },
+
+  "menu_titik_tiga": [
+    {
+      "id": "group_foto",
+      "label": "📸 Opsi Format Foto",
+      "type": "parent_menu",
+      "sub_menu": [
+        {"id": "fmt_webp_max", "label": "Format: WebP Max (Lossless)", "action": "setFormat", "value": "webp_max"},
+        {"id": "fmt_webp", "label": "Format: WebP", "action": "setFormat", "value": "webp"},
+        {"id": "fmt_jpeg_hr", "label": "Format: JPEG High-Res", "action": "setFormat", "value": "jpeg_hr"},
+        {"id": "fmt_jpeg", "label": "Format: JPEG", "action": "setFormat", "value": "jpeg"},
+        {"id": "fmt_png",  "label": "Format: PNG",  "action": "setFormat", "value": "png"},
+        {"id": "fmt_pdf",  "label": "Format: PDF",  "action": "setFormat", "value": "pdf"}
+      ]
+    },
+    {
+      "id": "group_video",
+      "label": "🎥 Opsi Format Video",
+      "type": "parent_menu",
+      "sub_menu": [
+        {"id": "fmt_vid_mp4", "label": "🎥 Video: MP4 (Standar)", "action": "setFormat", "value": "video_mp4"},
+        {"id": "fmt_vid_webm", "label": "🎥 Video: WebM (Ekstrem)", "action": "setFormat", "value": "video_webm"}
+      ]
+    },
+    {
+      "id": "group_sharpness",
+      "label": "✨ Opsi Ketajaman Mikroskopis",
+      "type": "parent_menu",
+      "sub_menu": [
+        {"id": "sharp_low", "label": "Ketajaman: Low", "action": "setSharpness", "value": "low"},
+        {"id": "sharp_std", "label": "Ketajaman: Standar", "action": "setSharpness", "value": "standar"},
+        {"id": "sharp_max", "label": "Ketajaman: Max", "action": "setSharpness", "value": "max"}
+      ]
+    },
+    {
+      "id": "group_standalone_features",
+      "label": "⚙️ Fitur Tambahan",
+      "type": "direct_menu",
+      "items": [
+        {"id": "mode_malam", "label": "🌙 Mode: Malam", "action": "setColorMode", "value": "malam"},
+        {"id": "mode_teks", "label": "📄 Mode: Fokus Teks", "action": "setColorMode", "value": "teks"},
+        {"id": "mode_stabil", "label": "🛡️ Mode: Stabil Kamera", "action": "toggleStability", "value": "true"},
+        {"id": "mode_fokus_kotak", "label": "🎯 Kotak Kunci Fokus: On/Off", "action": "toggleFocusBox", "value": "true"}
+      ]
+    }
+  ],
+
+  "javascript_blueprints": {
+    "anti_crash_loading": {
+      "desc": "Mencegah browser RAM 2GB force close saat mengolah WebP Max",
+      "logic": "shutterBtn.disabled = true; shutterBtn.innerText = '⏳...'; setTimeout(execute_canvas, 50);"
+    },
+    "multi_frame_buffer": {
+      "desc": "Membatasi riwayat foto di kiri bawah agar memori Chrome tidak meluap",
+      "max_slots": 5,
+      "logic": "cameraHistoryThumbs.unshift(base64Data); if(cameraHistoryThumbs.length > 5) cameraHistoryThumbs.pop();"
+    },
+    "magnetic_center_lock": {
+      "desc": "Memaksa gambar pratinjau kembali tegak lurus di tengah layar hitam setelah di-zoom",
+      "formulas": { "zoomScale": 1, "panX": 0, "panY": 0 },
+      "css_override": "previewImg.style.transform = 'translate(0px, 0px) scale(1)'; previewImg.style.transition = 'none';"
+    }
+  }
+}
