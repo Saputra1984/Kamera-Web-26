@@ -50,9 +50,9 @@
             cursor: pointer;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             font-weight: bold;
-            transition: background 0.2s;
+            transition: background 0.2s, transform 0.1s;
         }
-        .btn-ui:active { background: rgba(255, 255, 255, 0.6); }
+        .btn-ui:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.6); }
 
         /* Posisi Cadangan Sebelum JSON Terbaca */
         #gallery_preview {
@@ -74,8 +74,10 @@
             background: #ffffff;
             border: 4px solid rgba(0, 0, 0, 0.3);
             box-shadow: 0 0 0 4px #ffffff;
+            color: #000;
+            font-size: 18px;
         }
-        #shutter_btn:active { background: #cccccc; }
+        #shutter_btn:active { background: #cccccc; transform: translateX(-50%) scale(0.95); }
 
         #right_actions_container {
             position: absolute;
@@ -186,14 +188,61 @@
     <canvas id="capture-canvas" style="display:none;"></canvas>
 
     <script>
+        // MEMORI UTAMA (State Pengontrol RAM 2GB)
         const appMemory = {
             blueprint: null,
             stream: null,
             currentFacingMode: "environment",
-            cameraHistoryThumbs: []
+            cameraHistoryThumbs: [],
+            
+            // STATE LOGIKA SINKRONISASI BARU:
+            currentMode: "foto",       // Kontrol mode: "foto" atau "video"
+            timerOptions: [0, 3, 5, 10],
+            timerIndex: 0,             // Default 0s (tanpa timer)
+            mediaRecorder: null,
+            recordedChunks: [],
+            isVideoRecording: false
         };
 
-        // AMBIL BLUEPRINT JSON (Dengan Pengaman Ganda)
+        // 1. INTERAKSI TOMBOL TIMER (Siklus Opsi Berputar)
+        document.getElementById('timer_btn').onclick = () => {
+            appMemory.timerIndex = (appMemory.timerIndex + 1) % appMemory.timerOptions.length;
+            const detikAktif = appMemory.timerOptions[appMemory.timerIndex];
+            document.getElementById('timer_btn').innerText = detikAktif === 0 ? "⏱️" : `⏱️ ${detikAktif}s`;
+        };
+
+        // 2. INTERAKSI TOMBOL SWITCH MODE (Ubah Visual & Jalur Logika)
+        document.getElementById('switch_mode').onclick = () => {
+            const shutterBtn = document.getElementById('shutter_btn');
+            
+            if (appMemory.currentMode === "foto") {
+                appMemory.currentMode = "video";
+                document.getElementById('switch_mode').innerText = "📹";
+                shutterBtn.style.backgroundColor = "#ff3b30"; // Merah indikator video
+            } else {
+                appMemory.currentMode = "foto";
+                document.getElementById('switch_mode').innerText = "📸";
+                shutterBtn.style.backgroundColor = "#ffffff"; // Putih indikator foto
+            }
+        };
+
+        // 3. INTERAKSI TOMBOL PRATINJAU FOTO (GALLERY PREVIEW)
+        document.getElementById('gallery_preview').onclick = () => {
+            const galBtn = document.getElementById('gallery_preview');
+            
+            if (appMemory.currentMode === "video" && galBtn.dataset.lastVideo) {
+                // Jika rekaman video terakhir ada, putar di tab baru secara aman
+                window.open(galBtn.dataset.lastVideo);
+            } else if (appMemory.cameraHistoryThumbs.length > 0) {
+                // Jika ada riwayat foto di RAM, buka foto base64 terbaru tanpa membebani aplikasi utama
+                const imageWindow = window.open();
+                imageWindow.document.write(`<img src="${appMemory.cameraHistoryThumbs[0]}" style="width:100%; height:100%; object-fit:contain; background:#000; margin:0;">`);
+            } else {
+                alert("Belum ada jepretan foto atau rekaman video di memori.");
+            }
+        };
+
+        // AMBIL BLUEPRINT JSON (Anti-Cache)
         fetch('kamus.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
@@ -203,7 +252,6 @@
             })
             .catch(err => {
                 console.warn("Gagal sinkron JSON terbaru dari GitHub, menggunakan UI default:", err);
-                // Jika berkas kamus.json belum di-upload, kamera tetap dipaksa jalan dengan tombol bawaan
                 startCamera();
             });
 
@@ -214,7 +262,6 @@
             
             document.title = appMemory.blueprint.app_metadata.application_name || "Kamera Web";
 
-            // Atur ulang posisi berdasarkan JSON jika berhasil di-load
             const gal = document.getElementById('gallery_preview');
             Object.assign(gal.style, bp.left_bottom.ui_coordinate);
             gal.style.width = bp.left_bottom.ui_coordinate.width_px + 'px';
@@ -222,6 +269,8 @@
 
             const shut = document.getElementById('shutter_btn');
             Object.assign(shut.style, bp.center_bottom.ui_coordinate);
+            // Tetapkan transform bawaan untuk shutter di tengah agar tidak melompat posisinya
+            shut.style.transform = "translateX(-50%)";
             shut.style.width = bp.center_bottom.ui_coordinate.width_px + 'px';
             shut.style.height = bp.center_bottom.ui_coordinate.height_px + 'px';
 
@@ -245,6 +294,11 @@
             tBtn.style.width = bp.left_mid_controls.timer_button.ui_coordinate.width_px + 'px';
             tBtn.style.height = bp.left_mid_controls.timer_button.ui_coordinate.height_px + 'px';
 
+            // Masukkan config opsi urutan detik timer dari JSON jika tersedia
+            if (appMemory.blueprint.camera_features?.timer_options) {
+                appMemory.timerOptions = appMemory.blueprint.camera_features.timer_options;
+            }
+
             const slider = document.getElementById('expSlider');
             Object.assign(slider.style, bp.left_mid_controls.brightness_slider.ui_coordinate);
 
@@ -257,15 +311,14 @@
             buildDropdownMenu();
         }
 
-        // AKSI TOMBOL UTAMA
-        document.getElementById('gallery_preview').onclick = () => alert('Buka Galeri Pratinjau (Maks 5 Slot Memori)');
+        // AKSI HUBUNGAN TOMBOL FISIK & WINDOWS EVENT
         document.getElementById('shutter_btn').onclick = () => executeCapture();
         document.getElementById('switch_camera').onclick = () => toggleCameraFacing();
         document.getElementById('triple_dot_btn').onclick = () => toggleMenu();
         document.getElementById('camera-view').onclick = () => { document.getElementById('dropdownMenu').style.display = 'none'; };
         document.getElementById('expSlider').oninput = (e) => applyExposure(e.target.value);
 
-        // MEMBUAT DROPDOWN MENU
+        // MEMBUAT DROPDOWN MENU TITIK TIGA
         function buildDropdownMenu() {
             const menuBox = document.getElementById('dropdownMenu');
             if (!appMemory.blueprint) return;
@@ -284,6 +337,7 @@
                     btn.innerText = item.label;
                     btn.onclick = () => {
                         if(item.action === "setSharpness") applySharpnessFilter(item.value);
+                        if(item.action === "setColorMode") applyColorModeFilter(item.value);
                         menuBox.style.display = 'none';
                     };
                     menuBox.appendChild(btn);
@@ -296,7 +350,7 @@
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         }
 
-        // AKSES HARDWARE KAMERA
+        // AKSES HARDWARE KAMERA HP ASLI
         function startCamera() {
             if (appMemory.stream) {
                 appMemory.stream.getTracks().forEach(track => track.stop());
@@ -304,7 +358,7 @@
 
             const constraints = {
                 video: { facingMode: appMemory.currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: false
+                audio: true // Diaktifkan true agar perekaman video menangkap suara baku
             };
 
             navigator.mediaDevices.getUserMedia(constraints)
@@ -312,7 +366,7 @@
                     appMemory.stream = stream;
                     document.getElementById('camera-view').srcObject = stream;
                 })
-                .catch(err => console.log("Menunggu izin kamera hardware: " + err));
+                .catch(err => console.log("Menunggu izin akses kamera/mikrofon: " + err));
         }
 
         function toggleCameraFacing() {
@@ -320,8 +374,41 @@
             startCamera();
         }
 
-        // LOGIK BLUEPRINT: ANTI CRASH RAM 2GB
+        // LOGIK MANAJEMEN SHUTTER: HITUNG MUNDUR (TIMER) & PEMISAH MODALITAS
         function executeCapture() {
+            const shutterBtn = document.getElementById('shutter_btn');
+            const detikTunggu = appMemory.timerOptions[appMemory.timerIndex];
+
+            // Cegah hitung mundur ganda saat video sedang merekam
+            if (detikTunggu > 0 && !appMemory.isVideoRecording) {
+                let hitung = detikTunggu;
+                shutterBtn.disabled = true;
+                
+                const interval = setInterval(() => {
+                    shutterBtn.innerText = hitung;
+                    hitung--;
+                    if (hitung < 0) {
+                        clearInterval(interval);
+                        shutterBtn.innerText = "";
+                        shutterBtn.disabled = false;
+                        jalankanAksiUtama(); // Eksekusi setelah hitung mundur selesai
+                    }
+                }, 1000);
+            } else {
+                jalankanAksiUtama();
+            }
+        }
+
+        function jalankanAksiUtama() {
+            if (appMemory.currentMode === "foto") {
+                ambilFotoWebp();
+            } else {
+                kontrolPerekamanVideo();
+            }
+        }
+
+        // LOGIK BLUEPRINT: AMBIL FOTO (ANTI CRASH RAM 2GB VIA DELAY ASISTENSI)
+        function ambilFotoWebp() {
             const shutterBtn = document.getElementById('shutter_btn');
             shutterBtn.disabled = true;
             shutterBtn.style.opacity = "0.5";
@@ -337,23 +424,77 @@
                 ctx.filter = video.style.filter;
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
+                // Mengolah WebP kompresi aman sesuai instruksi default_format blueprint
                 const base64Data = canvas.toDataURL('image/webp', 0.9);
 
+                // Multi-frame buffer: Amankan penyimpanan internal maksimal 5 slot
                 appMemory.cameraHistoryThumbs.unshift(base64Data);
                 if(appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
 
+                // Jadikan gambar terakhir sebagai background thumbnail galeri kiri bawah
                 document.getElementById('gallery_preview').style.backgroundImage = `url(${base64Data})`;
 
                 shutterBtn.disabled = false;
                 shutterBtn.style.opacity = "1";
-            }, 50);
+            }, 50); // Jeda hardware_assisted 50ms
         }
 
+        // LOGIK BLUEPRINT: PEREKAMAN VIDEO EKSTREM
+        function kontrolPerekamanVideo() {
+            const shutterBtn = document.getElementById('shutter_btn');
+            
+            if (!appMemory.isVideoRecording) {
+                appMemory.recordedChunks = [];
+                
+                // Cek preferensi blueprint video format ekstrim
+                let opsiMime = "video/webm";
+                try {
+                    if (MediaRecorder.isTypeSupported("video/mp4")) opsiMime = "video/mp4";
+                } catch(e) {}
+
+                try {
+                    appMemory.mediaRecorder = new MediaRecorder(appMemory.stream, { mimeType: opsiMime });
+                } catch(e) {
+                    appMemory.mediaRecorder = new MediaRecorder(appMemory.stream);
+                }
+
+                appMemory.mediaRecorder.ondataavailable = (e) => {
+                    if (e.data && e.data.size > 0) appMemory.recordedChunks.push(e.data);
+                };
+
+                appMemory.mediaRecorder.onstop = () => {
+                    const blob = new Blob(appMemory.recordedChunks, { type: appMemory.mediaRecorder.mimeType });
+                    const videoURL = URL.createObjectURL(blob);
+                    
+                    // Simpan alamat video lokal di atribut data tombol galeri
+                    document.getElementById('gallery_preview').dataset.lastVideo = videoURL;
+                    document.getElementById('gallery_preview').style.backgroundImage = "url('https://cdn-icons-png.flaticon.com/512/685/685655.png')"; 
+                    alert("Video berhasil direkam secara aman ke memori!");
+                };
+
+                appMemory.mediaRecorder.start();
+                appMemory.isVideoRecording = true;
+                shutterBtn.innerText = "🛑"; // Ganti icon shutter jadi stop
+            } else {
+                appMemory.mediaRecorder.stop();
+                appMemory.isVideoRecording = false;
+                shutterBtn.innerText = "";
+            }
+        }
+
+        // ATUR MIKROSKOPIS & FILTER CSS WARNA KUSTOM DARI BLUEPRINT MENU
         function applySharpnessFilter(mode) {
             const video = document.getElementById('camera-view');
             if(!appMemory.blueprint) return;
             const modes = appMemory.blueprint.sharpness_modes[mode];
             video.style.filter = (modes && modes.sharpness_filter !== "none") ? modes.sharpness_filter : "none";
+        }
+
+        function applyColorModeFilter(colorKey) {
+            const video = document.getElementById('camera-view');
+            if(!appMemory.blueprint) return;
+            const filterStyle = appMemory.blueprint.camera_features?.color_filters[colorKey];
+            if(filterStyle) video.style.filter = filterStyle;
         }
 
         function applyExposure(val) {
@@ -362,7 +503,7 @@
             video.style.filter = `brightness(${calculatedBrightness})`;
         }
 
-        // REGISTRASI SINKRONISASI PWA LOKAL HP
+        // REGISTRASI SINKRONISASI PWA JALUR SW.JS
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js');
