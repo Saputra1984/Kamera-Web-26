@@ -600,7 +600,7 @@
         function ambilFotoWebp() {
             const shutterBtn = document.getElementById('shutter_btn');
             shutterBtn.disabled = true;
-            shutterBtn.innerText = '⏳...'; // Kunci Cegah RAM Overload (anti_crash_loading)
+            shutterBtn.innerText = '⏳...'; // Anti-crash loading
 
             setTimeout(() => {
                 const video = document.getElementById('camera-view');
@@ -612,7 +612,7 @@
                 canvas.width = w;
                 canvas.height = h;
                 
-                // Salin filter warna real-time dasar ke kanvas
+                // 1. Ambil filter warna real-time dasar dari layar
                 ctx.filter = video.style.filter;
                 
                 // CROP ZOOM KANVAS DIGITAL
@@ -622,74 +622,74 @@
                 const sx = (w - sw) / 2;
                 const sy = (h - sh) / 2;
                 
+                // Gambar Lapisan Utama (Warna Padat Asli)
                 ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
 
-                // --- EKSEKUSI REVOLUSI MATRIKS KERNEL KETAJAMAN BEBAS PECAH ---
+                // 2. PROSES KETAJAMAN BERLAPIS (UNSHARP BLENDING)
                 if (appMemory.blueprint && appMemory.blueprint.sharpness_modes) {
                     const cfgSharp = appMemory.blueprint.sharpness_modes[appMemory.activeSharpnessMode];
                     if (cfgSharp && cfgSharp.level > 1) {
                         
-                        // Ekstraksi data piksel mentah dari gambar kanvas asli
-                        const imgData = ctx.getImageData(0, 0, w, h);
-                        const dataPiksel = imgData.data;
+                        // Ambil data piksel asli untuk referensi warna
+                        const dataAsli = ctx.getImageData(0, 0, w, h);
+                        const pikselAsli = dataAsli.data;
                         
-                        // Buat buffer salinan data penampung agar kalkulasi piksel tidak tumpang tindih
-                        const hasilPiksel = ctx.createImageData(w, h);
-                        const dataHasil = hasilPiksel.data;
-
-                        // Mengambil nilai pengali level ketajaman (3, 5, atau 10) dari JSON
-                        const n = cfgSharp.level; 
+                        // Buat canvas bantuan di memori khusus untuk mendeteksi tekstur garis
+                        const bufferCanvas = document.createElement('canvas');
+                        bufferCanvas.width = w;
+                        bufferCanvas.height = h;
+                        const bCtx = bufferCanvas.getContext('2d');
+                        bCtx.drawImage(canvas, 0, 0);
                         
-                        // Rumus Konvolusi Matriks Lensa Mikro:
-                        // [  0, -n,  0 ]
-                        // [ -n, 4n+1,-n ]
-                        // [  0, -n,  0 ]
-                        const kPusat = (4 * n) + 1;
-                        const kSamping = -n;
+                        const dataTekstur = bCtx.getImageData(0, 0, w, h);
+                        const pikselTekstur = dataTekstur.data;
 
-                        // Looping pixel bypass area tepi pengaman 1 baris luar
+                        // Ambil level kekuatan dari JSON (3, 5, atau 10)
+                        // Kita jinakkan intensitasnya agar level 10 tetap natural tapi sangat tajam
+                        const kekuatan = cfgSharp.level * 0.12; 
+
+                        // Algoritma Edge-Detection Ringan untuk mengambil garis tekstur saja
                         for (let y = 1; y < h - 1; y++) {
                             for (let x = 1; x < w - 1; x++) {
                                 const idx = (y * w + x) * 4;
+                                const idxAtas = ((y - 1) * w + x) * 4;
+                                const idxKiri = (y * w + (x - 1)) * 4;
 
-                                // Hitung pergeseran koordinat indeks piksel tetangga (Atas, Bawah, Kiri, Kanan)
-                                const idxAtas  = ((y - 1) * w + x) * 4;
-                                const idxBawah = ((y + 1) * w + x) * 4;
-                                const idxKiri  = (y * w + (x - 1)) * 4;
-                                const idxKanan = (y * w + (x + 1)) * 4;
-
-                                // Lakukan kalkulasi penegasan tepi di 3 channel utama (Red, Green, Blue)
                                 for (let c = 0; c < 3; c++) {
-                                    let vKalkulasi = dataPiksel[idx + c] * kPusat +
-                                                     dataPiksel[idxAtas + c] * kSamping +
-                                                     dataPiksel[idxBawah + c] * kSamping +
-                                                     dataPiksel[idxKiri + c] * kSamping +
-                                                     dataPiksel[idxKanan + c] * kSamping;
+                                        // Cari selisih gradien (garis tepi)
+                                        const selisih = pikselAsli[idx + c] - pikselAsli[idxAtas + c];
+                                        const selisihKiri = pikselAsli[idx + c] - pikselAsli[idxKiri + c];
+                                        const totalGaris = (selisih + selisihKiri) * kekuatan;
 
-                                    // Lakukan pembatasan batas warna (Clamping) 0-255 agar gambar tidak bocor/rusak
-                                    if (vKalkulasi < 0) vKalkulasi = 0;
-                                    if (vKalkulasi > 255) vKalkulasi = 255;
+                                        // SUNTIKKAN KETAJAMAN KE FOTO ASLI TANPA MERUSAK WARNA UTAMA
+                                        let warnaBaru = pikselAsli[idx + c] + totalGaris;
 
-                                    dataHasil[idx + c] = vKalkulasi;
+                                        // Kunci batas warna 0 - 255 agar warna tidak pudar/pecah
+                                        if (warnaBaru < 0) warnaBaru = 0;
+                                        if (warnaBaru > 255) warnaBaru = 255;
+
+                                        pikselTekstur[idx + c] = warnaBaru;
                                 }
-                                dataHasil[idx + 3] = dataPiksel[idx + 3]; // Jaga nilai Alpha (transparansi) tetap utuh
+                                pikselTekstur[idx + 3] = pikselAsli[idx + 3];
                             }
                         }
                         
-                        // Cetak kembali hasil kalkulasi piksel super tajam ke kanvas utama
-                        ctx.putImageData(hasilPiksel, 0, 0);
+                        // Cetak hasil gabungan tekstur tajam + warna padat ke kanvas utama
+                        bCtx.putImageData(dataTekstur, 0, 0);
+                        ctx.clearRect(0, 0, w, h);
+                        ctx.drawImage(bufferCanvas, 0, 0);
 
-                        // Berikan assist kontras ringan sesuai konfigurasi kamus.json agar warna makin klop
+                        // Berikan kompensasi kepekatan warna otomatis agar warna tidak pudar (Anti-Fade Assist)
                         if (cfgSharp.contrast_assist) {
-                            ctx.globalCompositeOperation = 'multiply';
-                            ctx.fillStyle = `rgba(255,255,255,${cfgSharp.contrast_assist - 1})`;
+                            ctx.globalCompositeOperation = 'color-burn'; // Mengunci kerapatan warna
+                            ctx.fillStyle = `rgba(0,0,0,0.03)`; // Sentuhan kegelapan mikro agar warna padat
                             ctx.fillRect(0,0,w,h);
-                            ctx.globalCompositeOperation = 'source-over';
+                            ctx.globalCompositeOperation = 'source-over'; // Kembalikan mode normal
                         }
                     }
                 }
 
-                // Pengaman Format Ekstensi Sesuai JSON Kamu
+                // Pengaman Format Ekstensi Sesuai JSON
                 const formatTerpilih = appMemory.defaultFormatFoto;
                 let mimeType = 'image/webp';
                 let ekstensi = 'webp';
@@ -704,16 +704,15 @@
                     mimeType = 'image/jpeg'; ekstensi = 'pdf'; 
                 }
 
-                // Mengolah WebP kompresi aman 90% (Lossless jika dipilih webp_max)
                 const base64Data = canvas.toDataURL(mimeType, (formatTerpilih === 'webp_max' ? 1.0 : 0.9));
 
-                // Multi-frame buffer: Pengaman RAM
+                // Multi-frame buffer
                 appMemory.cameraHistoryThumbs.unshift(base64Data);
                 if(appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
 
                 document.getElementById('gallery_preview').style.backgroundImage = `url(${base64Data})`;
 
-                // AUTO DOWNLOAD LANGSUNG KE STORAGE HP
+                // AUTO DOWNLOAD
                 const linkDownload = document.createElement('a');
                 linkDownload.href = base64Data;
                 
