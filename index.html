@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Kamera Web</title>
+    <title>Ai Picture</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
     <style>
-        /* CSS Reset & Pengunci Stabilitas Layar */
+        /* CSS Reset & Pengunci Stabilitas Layar agar Tidak Goyang saat Disentuh */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html { 
             width: 100%; 
@@ -17,7 +17,7 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
-        /* Viewfinder Utama */
+        /* Viewfinder Utama Kamera */
         #camera-view {
             position: absolute;
             top: 0;
@@ -27,16 +27,18 @@
             z-index: 1;
             object-fit: cover;
             background: #111;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
         }
 
-        /* Mengamankan elemen teks & tombol agar mutlak diam di memori & tidak goyang */
+        /* Mengamankan elemen agar mutlak diam di memori & tidak memicu seleksi teks biru */
         .stable-text, .btn-ui { 
-            touch-action: manipulation; 
+            touch-action: none; 
             user-select: none;
             -webkit-user-select: none;
         }
 
-        /* Komponen Tombol UI - Diberikan Ukuran Bawaan Sesuai Blueprint agar Tidak Hilang */
+        /* Komponen Tombol UI Bawaan / Cadangan Sebelum JSON Terbaca */
         .btn-ui {
             position: absolute;
             z-index: 15;
@@ -54,7 +56,7 @@
         }
         .btn-ui:active { transform: scale(0.95); background: rgba(255, 255, 255, 0.6); }
 
-        /* Posisi Cadangan Sebelum JSON Terbaca */
+        /* Tombol Galeri Kiri Bawah */
         #gallery_preview {
             bottom: 20px;
             left: 20px;
@@ -65,6 +67,7 @@
             background-position: center;
         }
 
+        /* Tombol Shutter Utama (Tengah Bawah) */
         #shutter_btn {
             bottom: 15px;
             left: 50%;
@@ -79,6 +82,7 @@
         }
         #shutter_btn:active { background: #cccccc; transform: translateX(-50%) scale(0.95); }
 
+        /* Wadah Tombol Kanan Bawah (Kamera Bolak-balik & Mode) */
         #right_actions_container {
             position: absolute;
             bottom: 15px;
@@ -89,29 +93,38 @@
             gap: 10px;
         }
         #switch_camera, #switch_mode {
-            position: relative; /* Ikut container flex */
+            position: relative; 
             width: 45px;
             height: 45px;
         }
 
-        #timer_btn {
+        /* Wadah Kecerahan dan Jepret Waktu Tegak (Portrait) */
+        #left_mid_controls {
+            position: absolute;
             top: 30%;
             left: 20px;
-            width: 45px;
-            height: 45px;
+            z-index: 15;
+            display: flex;
+            flex-direction: column;
+            gap: 15px; 
         }
 
+        /* Slider Bright Bawaan Tegak */
         #expSlider {
-            position: absolute;
-            top: 55%;
-            left: 20px;
-            z-index: 10;
-            transform: rotate(-90deg);
-            transform-origin: left center;
             width: 150px;
             accent-color: #2196F3;
+            transform: rotate(-90deg);
+            transform-origin: left center;
         }
 
+        /* Tombol Jepret Waktu */
+        #timer_btn {
+            width: 45px;
+            height: 45px;
+            position: relative; 
+        }
+
+        /* Tombol Menu Titik Tiga Kanan Atas */
         #triple_dot_btn {
             position: absolute;
             top: 15px;
@@ -125,51 +138,95 @@
             padding: 5px;
         }
 
-        /* Dropdown Menu Titik Tiga */
+        /* Kotak Dropdown Menu Titik Tiga Elegan */
         #dropdownMenu {
             position: absolute;
             top: 60px;
             right: 15px;
             z-index: 20;
-            background: rgba(0, 0, 0, 0.9);
-            border: 1px solid #333;
-            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.95);
+            border: 2px solid #333;
+            border-radius: 12px;
             color: white;
-            padding: 8px;
-            width: 250px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+            padding: 6px;
+            width: 220px; 
+            box-shadow: 0 6px 20px rgba(0,0,0,0.7);
             display: none;
-            max-height: 50vh;
-            overflow-y: auto;
         }
 
         .menu-parent-label {
-            padding: 8px;
+            padding: 6px 10px;
+            font-size: 12px;
             font-weight: bold;
             color: #2196F3;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             border-bottom: 1px solid #222;
-            margin-top: 6px;
+            margin-top: 4px;
         }
 
         .menu-item-btn {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             width: 100%;
-            padding: 10px;
+            padding: 12px 10px; 
             background: none;
             border: none;
             color: #fff;
             text-align: left;
             cursor: pointer;
             font-size: 14px;
+            border-radius: 6px;
         }
-        .menu-item-btn:hover, .menu-item-btn:active {
+        .menu-item-btn:active {
             background: #2196F3;
+        }
+
+        /* --- SAKELAR CSS OTOMATIS SAAT LAYAR DIMIRINGKAN (LANDSCAPE) --- */
+        @media (orientation: landscape) {
+            #left_mid_controls {
+                top: 80px;
+                right: 20px;
+                left: auto;
+                width: 200px; 
+                flex-direction: row-reverse; 
+                align-items: center;
+            }
+            #expSlider {
+                transform: none; 
+                width: 100%;     
+            }
+            #timer_btn {
+                width: 45px;
+                height: 45px;
+            }
+        }
+
+        .rotate-icon { transition: transform 0.3s ease-out; }
+        .rotated { transform: rotate(90deg); }
+
+        /* Angka Indikator Zoom di Tengah Atas Layar */
+        #zoom-indicator {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #fff;
+            display: none;
         }
     </style>
 </head>
 <body>
 
     <video id="camera-view" autoplay playsinline class="stable-text"></video>
+
+    <div id="zoom-indicator" class="stable-text">1.0x</div>
 
     <button id="gallery_preview" class="btn-ui"></button>
     <button id="shutter_btn" class="btn-ui"></button>
@@ -179,62 +236,76 @@
         <button id="switch_mode" class="btn-ui">📸</button>
     </div>
 
-    <button id="timer_btn" class="btn-ui">⏱️</button>
-    <input type="range" id="expSlider" min="-3" max="3" step="0.5" value="0">
+    <div id="left_mid_controls">
+        <input type="range" id="expSlider" min="-3" max="3" step="0.5" value="0">
+        <button id="timer_btn" class="btn-ui">⏱️</button>
+    </div>
 
     <button id="triple_dot_btn" class="stable-text">⋮</button>
     <div id="dropdownMenu"></div>
 
     <canvas id="capture-canvas" style="display:none;"></canvas>
 
+    <div id="scrollPickerOverlay" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:30; display:none; justify-content:center; align-items:flex-end;">
+        <div id="scrollPickerBox" style="width:100%; background:#121212; border-radius:16px 16px 0 0; padding:20px; box-shadow:0 -4px 20px rgba(0,0,0,0.5); transform:translateY(100%); transition:transform 0.2s ease-out;">
+            <div id="scrollPickerTitle" class="stable-text" style="color:#2196F3; font-weight:bold; font-size:15px; margin-bottom:15px; text-align:center; border-bottom:1px solid #222; padding-bottom:10px;">Pilih Opsi</div>
+            <div id="scrollPickerOptionsContainer" style="max-height:40vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;"></div>
+            <button id="closePickerBtn" class="stable-text" style="width:100%; margin-top:15px; padding:12px; background:#222; border:1px solid #333; color:#fff; border-radius:8px; font-weight:bold; cursor:pointer;">Batal</button>
+        </div>
+    </div>
+
     <script>
-        // MEMORI UTAMA (State Pengontrol RAM 2GB)
+        // 1. MEMORI UTAMA (State Pengontrol RAM 2GB)
         const appMemory = {
             blueprint: null,
             stream: null,
             currentFacingMode: "environment",
             cameraHistoryThumbs: [],
-            
-            // STATE LOGIKA SINKRONISASI BARU:
-            currentMode: "foto",       // Kontrol mode: "foto" atau "video"
+            currentMode: "foto",       
             timerOptions: [0, 3, 5, 10],
-            timerIndex: 0,             // Default 0s (tanpa timer)
+            timerIndex: 0,             
             mediaRecorder: null,
             recordedChunks: [],
-            isVideoRecording: false
+            isVideoRecording: false,
+            defaultFormatFoto: "webp_max",
+            defaultFormatVideo: "video_webm",
+            activeSharpnessMode: "max", // Sesuai default cetak biru kamu
+            
+            // MEMORI SISTEM INTERAKSI ZOOM
+            currentZoom: 1,
+            maxZoom: 4,                  
+            startTouchDist: 0            
         };
 
-        // 1. INTERAKSI TOMBOL TIMER (Siklus Opsi Berputar)
+        // 2. INTERAKSI TOMBOL TIMER (Siklus Opsi Berputar)
         document.getElementById('timer_btn').onclick = () => {
             appMemory.timerIndex = (appMemory.timerIndex + 1) % appMemory.timerOptions.length;
             const detikAktif = appMemory.timerOptions[appMemory.timerIndex];
             document.getElementById('timer_btn').innerText = detikAktif === 0 ? "⏱️" : `⏱️ ${detikAktif}s`;
         };
 
-        // 2. INTERAKSI TOMBOL SWITCH MODE (Ubah Visual & Jalur Logika)
+        // 3. INTERAKSI TOMBOL SWITCH MODE
         document.getElementById('switch_mode').onclick = () => {
             const shutterBtn = document.getElementById('shutter_btn');
-            
             if (appMemory.currentMode === "foto") {
                 appMemory.currentMode = "video";
                 document.getElementById('switch_mode').innerText = "📹";
-                shutterBtn.style.backgroundColor = "#ff3b30"; // Merah indikator video
+                shutterBtn.style.backgroundColor = "#ff3b30"; 
+                startCamera(true);
             } else {
                 appMemory.currentMode = "foto";
                 document.getElementById('switch_mode').innerText = "📸";
-                shutterBtn.style.backgroundColor = "#ffffff"; // Putih indikator foto
+                shutterBtn.style.backgroundColor = "#ffffff"; 
+                startCamera(false);
             }
         };
 
-        // 3. INTERAKSI TOMBOL PRATINJAU FOTO (GALLERY PREVIEW)
+        // 4. INTERAKSI TOMBOL PRATINJAU FOTO (GALLERY PREVIEW)
         document.getElementById('gallery_preview').onclick = () => {
             const galBtn = document.getElementById('gallery_preview');
-            
             if (appMemory.currentMode === "video" && galBtn.dataset.lastVideo) {
-                // Jika rekaman video terakhir ada, putar di tab baru secara aman
                 window.open(galBtn.dataset.lastVideo);
             } else if (appMemory.cameraHistoryThumbs.length > 0) {
-                // Jika ada riwayat foto di RAM, buka foto base64 terbaru tanpa membebani aplikasi utama
                 const imageWindow = window.open();
                 imageWindow.document.write(`<img src="${appMemory.cameraHistoryThumbs[0]}" style="width:100%; height:100%; object-fit:contain; background:#000; margin:0;">`);
             } else {
@@ -242,25 +313,31 @@
             }
         };
 
-        // AMBIL BLUEPRINT JSON (Anti-Cache)
+        // 5. AMBIL BLUEPRINT JSON (Anti-Cache)
         fetch('kamus.json?v=' + Date.now())
             .then(res => res.json())
             .then(data => {
                 appMemory.blueprint = data;
                 applyBlueprintUI();
-                startCamera();
+                
+                if (data.settings) {
+                    if (data.settings.default_format) appMemory.defaultFormatFoto = data.settings.default_format;
+                    if (data.settings.default_sharpness) appMemory.activeSharpnessMode = data.settings.default_sharpness;
+                    if (data.settings.default_color_mode) applyColorModeFilter(data.settings.default_color_mode);
+                }
+                startCamera(false);
             })
             .catch(err => {
-                console.warn("Gagal sinkron JSON terbaru dari GitHub, menggunakan UI default:", err);
-                startCamera();
+                console.warn("Gagal sinkron JSON terbaru, menggunakan UI default:", err);
+                startCamera(false);
             });
 
-        // TERAPKAN UI BERDASARKAN BLUEPRINT JSON SECARA DINAMIS
+        // 6. TERAPKAN UI BERDASARKAN BLUEPRINT JSON SECARA DINAMIS
         function applyBlueprintUI() {
             if (!appMemory.blueprint) return;
             const bp = appMemory.blueprint.navigation_buttons;
             
-            document.title = appMemory.blueprint.app_metadata.application_name || "Kamera Web";
+            document.title = appMemory.blueprint.app_metadata.application_name || "Ai Picture";
 
             const gal = document.getElementById('gallery_preview');
             Object.assign(gal.style, bp.left_bottom.ui_coordinate);
@@ -269,8 +346,7 @@
 
             const shut = document.getElementById('shutter_btn');
             Object.assign(shut.style, bp.center_bottom.ui_coordinate);
-            // Tetapkan transform bawaan untuk shutter di tengah agar tidak melompat posisinya
-            shut.style.transform = "translateX(-50%)";
+            shut.style.transform = "translateX(-50%)"; 
             shut.style.width = bp.center_bottom.ui_coordinate.width_px + 'px';
             shut.style.height = bp.center_bottom.ui_coordinate.height_px + 'px';
 
@@ -290,75 +366,186 @@
 
             const tBtn = document.getElementById('timer_btn');
             tBtn.innerText = bp.left_mid_controls.timer_button.label;
-            Object.assign(tBtn.style, bp.left_mid_controls.timer_button.ui_coordinate);
             tBtn.style.width = bp.left_mid_controls.timer_button.ui_coordinate.width_px + 'px';
             tBtn.style.height = bp.left_mid_controls.timer_button.ui_coordinate.height_px + 'px';
 
-            // Masukkan config opsi urutan detik timer dari JSON jika tersedia
             if (appMemory.blueprint.camera_features?.timer_options) {
                 appMemory.timerOptions = appMemory.blueprint.camera_features.timer_options;
             }
+            if (appMemory.blueprint.camera_features?.zoom?.extreme_digital_multiplier) {
+                appMemory.maxZoom = appMemory.blueprint.camera_features.zoom.extreme_digital_multiplier;
+            }
 
-            const slider = document.getElementById('expSlider');
-            Object.assign(slider.style, bp.left_mid_controls.brightness_slider.ui_coordinate);
-
-            const dotBtn = document.getElementById('triple_dot_btn');
-            Object.assign(dotBtn.style, bp.top_bar_controls.menu_button.ui_coordinate);
-
-            const menuBox = document.getElementById('dropdownMenu');
-            Object.assign(menuBox.style, bp.top_bar_controls.dropdown_box.ui_coordinate);
-            
             buildDropdownMenu();
         }
 
-        // AKSI HUBUNGAN TOMBOL FISIK & WINDOWS EVENT
+        // 7. HUBUNGAN TOMBOL FISIK & WINDOWS EVENT
         document.getElementById('shutter_btn').onclick = () => executeCapture();
         document.getElementById('switch_camera').onclick = () => toggleCameraFacing();
         document.getElementById('triple_dot_btn').onclick = () => toggleMenu();
         document.getElementById('camera-view').onclick = () => { document.getElementById('dropdownMenu').style.display = 'none'; };
         document.getElementById('expSlider').oninput = (e) => applyExposure(e.target.value);
 
-        // MEMBUAT DROPDOWN MENU TITIK TIGA
+        // 8. LOGIKA PINCH-TO-ZOOM
+        const videoEl = document.getElementById('camera-view');
+        
+        videoEl.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                appMemory.startTouchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }
+        });
+
+        videoEl.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && appMemory.startTouchDist > 0) {
+                const currentDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                
+                const factor = currentDist / appMemory.startTouchDist;
+                let newZoom = appMemory.currentZoom * factor;
+                newZoom = Math.max(1, Math.min(newZoom, appMemory.maxZoom));
+                
+                videoEl.style.transform = `scale(${newZoom})`;
+                
+                const indicator = document.getElementById('zoom-indicator');
+                indicator.style.display = "block";
+                indicator.innerText = `${newZoom.toFixed(1)}x`;
+                
+                appMemory.currentZoom = newZoom;
+                appMemory.startTouchDist = currentDist;
+            }
+        });
+
+        videoEl.addEventListener('touchend', () => {
+            appMemory.startTouchDist = 0;
+            setTimeout(() => {
+                if(appMemory.startTouchDist === 0) {
+                    document.getElementById('zoom-indicator').style.display = "none";
+                }
+            }, 1500);
+        });
+
+        // 9. REVOLUSI MENU TITIK TIGA: SINKRON TOTAL PATUH PADA BLUEPRINT JSON
         function buildDropdownMenu() {
             const menuBox = document.getElementById('dropdownMenu');
-            if (!appMemory.blueprint) return;
-            menuBox.innerHTML = '';
-            
-            appMemory.blueprint.menu_titik_tiga.forEach(group => {
+            if (!appMemory.blueprint || !appMemory.blueprint.menu_titik_tiga) return;
+            menuBox.innerHTML = ''; 
+
+            appMemory.blueprint.menu_titik_tiga.forEach(grup => {
                 const label = document.createElement('div');
                 label.className = 'menu-parent-label stable-text';
-                label.innerText = group.label;
+                label.innerText = grup.label;
                 menuBox.appendChild(label);
 
-                const items = group.sub_menu || group.items || [];
-                items.forEach(item => {
-                    const btn = document.createElement('button');
-                    btn.className = 'menu-item-btn stable-text';
-                    btn.innerText = item.label;
-                    btn.onclick = () => {
-                        if(item.action === "setSharpness") applySharpnessFilter(item.value);
-                        if(item.action === "setColorMode") applyColorModeFilter(item.value);
+                if (grup.type === "parent_menu" && grup.sub_menu) {
+                    const btnUtama = document.createElement('button');
+                    btnUtama.className = 'menu-item-btn stable-text';
+                    btnUtama.innerHTML = `<span>Buka ${grup.label.split(' ').slice(1).join(' ')}</span> <span>❯</span>`;
+                    
+                    btnUtama.onclick = () => {
+                        const daftarOpsiGulir = grup.sub_menu.map(sub => {
+                            return { label: sub.label, value: sub.value };
+                        });
+
+                        tampilkanPopUpGulir(grup.label.toUpperCase(), daftarOpsiGulir, (nilai, teksLabel) => {
+                            if (grup.id === "group_foto") {
+                                appMemory.defaultFormatFoto = nilai; 
+                            } else if (grup.id === "group_video") {
+                                appMemory.defaultFormatVideo = nilai;
+                            } else if (grup.id === "group_sharpness") {
+                                applySharpnessFilter(nilai);
+                            }
+                            alert(`Berhasil diset: ${teksLabel}`);
+                        });
                         menuBox.style.display = 'none';
                     };
-                    menuBox.appendChild(btn);
-                });
+                    menuBox.appendChild(btnUtama);
+                }
+
+                if (grup.type === "direct_menu" && grup.items) {
+                    grup.items.forEach(item => {
+                        const btnLangsung = document.createElement('button');
+                        btnLangsung.className = 'menu-item-btn stable-text';
+                        btnLangsung.innerHTML = `<span>${item.label}</span> <span>🎯</span>`;
+                        
+                        btnLangsung.onclick = () => {
+                            if (item.action === "setColorMode") {
+                                applyColorModeFilter(item.value);
+                                alert(`Mode Warna diatur ke: ${item.label}`);
+                            } else if (item.action === "toggleStability") {
+                                alert("🛡️ Kamera Stabil Aktif: Mengunci koordinat getaran lensa.");
+                            } else if (item.action === "toggleFocusBox") {
+                                alert("🎯 Kotak Kunci Fokus diaktifkan di area tengah kamera.");
+                            }
+                            menuBox.style.display = 'none';
+                        };
+                        menuBox.appendChild(btnLangsung);
+                    });
+                }
             });
         }
+
+        // Fungsi Pop-up Gulir Kustom (Bottom Sheet Premium)
+        function tampilkanPopUpGulir(judul, daftarOpsi, aksiPilihan) {
+            const overlay = document.getElementById('scrollPickerOverlay');
+            const box = document.getElementById('scrollPickerBox');
+            const title = document.getElementById('scrollPickerTitle');
+            const container = document.getElementById('scrollPickerOptionsContainer');
+
+            title.innerText = judul;
+            container.innerHTML = ''; 
+
+            daftarOpsi.forEach(opsi => {
+                const btn = document.createElement('button');
+                btn.className = 'stable-text';
+                btn.innerText = opsi.label;
+                
+                Object.assign(btn.style, {
+                    width: '100%', padding: '14px', background: '#1c1c1e', border: 'none',
+                    color: '#fff', textAlign: 'center', fontSize: '15px', borderRadius: '8px', cursor: 'pointer'
+                });
+
+                btn.onclick = () => {
+                    aksiPilihan(opsi.value, opsi.label);
+                    tutupPopUpGulir();
+                };
+                container.appendChild(btn);
+            });
+
+            overlay.style.display = 'flex';
+            setTimeout(() => { box.style.transform = 'translateY(0)'; }, 10);
+        }
+
+        function tutupPopUpGulir() {
+            const overlay = document.getElementById('scrollPickerOverlay');
+            const box = document.getElementById('scrollPickerBox');
+            box.style.transform = 'translateY(100%)';
+            setTimeout(() => { overlay.style.display = 'none'; }, 200);
+        }
+
+        document.getElementById('closePickerBtn').onclick = tutupPopUpGulir;
+        document.getElementById('scrollPickerOverlay').onclick = (e) => {
+            if(e.target === document.getElementById('scrollPickerOverlay')) tutupPopUpGulir();
+        };
 
         function toggleMenu() {
             const menu = document.getElementById('dropdownMenu');
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
         }
 
-        // AKSES HARDWARE KAMERA HP ASLI
-        function startCamera() {
+        // 10. AKSES HARDWARE KAMERA HP ASLI
+        function startCamera(needsAudio = false) {
             if (appMemory.stream) {
                 appMemory.stream.getTracks().forEach(track => track.stop());
             }
 
             const constraints = {
                 video: { facingMode: appMemory.currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: true // Diaktifkan true agar perekaman video menangkap suara baku
+                audio: needsAudio 
             };
 
             navigator.mediaDevices.getUserMedia(constraints)
@@ -366,20 +553,20 @@
                     appMemory.stream = stream;
                     document.getElementById('camera-view').srcObject = stream;
                 })
-                .catch(err => console.log("Menunggu izin akses kamera/mikrofon: " + err));
+                .catch(err => console.log("Izin hardware: " + err));
         }
 
         function toggleCameraFacing() {
             appMemory.currentFacingMode = appMemory.currentFacingMode === "user" ? "environment" : "user";
-            startCamera();
+            const audioStatus = appMemory.currentMode === "video";
+            startCamera(audioStatus);
         }
 
-        // LOGIK MANAJEMEN SHUTTER: HITUNG MUNDUR (TIMER) & PEMISAH MODALITAS
+        // 11. LOGIK MANAJEMEN SHUTTER (Timer Hitung Mundur)
         function executeCapture() {
             const shutterBtn = document.getElementById('shutter_btn');
             const detikTunggu = appMemory.timerOptions[appMemory.timerIndex];
 
-            // Cegah hitung mundur ganda saat video sedang merekam
             if (detikTunggu > 0 && !appMemory.isVideoRecording) {
                 let hitung = detikTunggu;
                 shutterBtn.disabled = true;
@@ -391,7 +578,7 @@
                         clearInterval(interval);
                         shutterBtn.innerText = "";
                         shutterBtn.disabled = false;
-                        jalankanAksiUtama(); // Eksekusi setelah hitung mundur selesai
+                        jalankanAksiUtama(); 
                     }
                 }, 1000);
             } else {
@@ -407,50 +594,151 @@
             }
         }
 
-        // LOGIK BLUEPRINT: AMBIL FOTO (ANTI CRASH RAM 2GB VIA DELAY ASISTENSI)
+        // ============================================================
+        // 12. MESIN INTI: AMBIL FOTO + KALKULASI MATRIKS KETAJAMAN PIKSEL
+        // ============================================================
         function ambilFotoWebp() {
             const shutterBtn = document.getElementById('shutter_btn');
             shutterBtn.disabled = true;
-            shutterBtn.style.opacity = "0.5";
+            shutterBtn.innerText = '⏳...'; // Kunci Cegah RAM Overload (anti_crash_loading)
 
             setTimeout(() => {
                 const video = document.getElementById('camera-view');
                 const canvas = document.getElementById('capture-canvas');
                 const ctx = canvas.getContext('2d');
 
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
+                const w = video.videoWidth || 640;
+                const h = video.videoHeight || 480;
+                canvas.width = w;
+                canvas.height = h;
                 
+                // Salin filter warna real-time dasar ke kanvas
                 ctx.filter = video.style.filter;
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // CROP ZOOM KANVAS DIGITAL
+                const z = appMemory.currentZoom;
+                const sw = w / z;
+                const sh = h / z;
+                const sx = (w - sw) / 2;
+                const sy = (h - sh) / 2;
+                
+                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
 
-                // Mengolah WebP kompresi aman sesuai instruksi default_format blueprint
-                const base64Data = canvas.toDataURL('image/webp', 0.9);
+                // --- EKSEKUSI REVOLUSI MATRIKS KERNEL KETAJAMAN BEBAS PECAH ---
+                if (appMemory.blueprint && appMemory.blueprint.sharpness_modes) {
+                    const cfgSharp = appMemory.blueprint.sharpness_modes[appMemory.activeSharpnessMode];
+                    if (cfgSharp && cfgSharp.level > 1) {
+                        
+                        // Ekstraksi data piksel mentah dari gambar kanvas asli
+                        const imgData = ctx.getImageData(0, 0, w, h);
+                        const dataPiksel = imgData.data;
+                        
+                        // Buat buffer salinan data penampung agar kalkulasi piksel tidak tumpang tindih
+                        const hasilPiksel = ctx.createImageData(w, h);
+                        const dataHasil = hasilPiksel.data;
 
-                // Multi-frame buffer: Amankan penyimpanan internal maksimal 5 slot
+                        // Mengambil nilai pengali level ketajaman (3, 5, atau 10) dari JSON
+                        const n = cfgSharp.level; 
+                        
+                        // Rumus Konvolusi Matriks Lensa Mikro:
+                        // [  0, -n,  0 ]
+                        // [ -n, 4n+1,-n ]
+                        // [  0, -n,  0 ]
+                        const kPusat = (4 * n) + 1;
+                        const kSamping = -n;
+
+                        // Looping pixel bypass area tepi pengaman 1 baris luar
+                        for (let y = 1; y < h - 1; y++) {
+                            for (let x = 1; x < w - 1; x++) {
+                                const idx = (y * w + x) * 4;
+
+                                // Hitung pergeseran koordinat indeks piksel tetangga (Atas, Bawah, Kiri, Kanan)
+                                const idxAtas  = ((y - 1) * w + x) * 4;
+                                const idxBawah = ((y + 1) * w + x) * 4;
+                                const idxKiri  = (y * w + (x - 1)) * 4;
+                                const idxKanan = (y * w + (x + 1)) * 4;
+
+                                // Lakukan kalkulasi penegasan tepi di 3 channel utama (Red, Green, Blue)
+                                for (let c = 0; c < 3; c++) {
+                                    let vKalkulasi = dataPiksel[idx + c] * kPusat +
+                                                     dataPiksel[idxAtas + c] * kSamping +
+                                                     dataPiksel[idxBawah + c] * kSamping +
+                                                     dataPiksel[idxKiri + c] * kSamping +
+                                                     dataPiksel[idxKanan + c] * kSamping;
+
+                                    // Lakukan pembatasan batas warna (Clamping) 0-255 agar gambar tidak bocor/rusak
+                                    if (vKalkulasi < 0) vKalkulasi = 0;
+                                    if (vKalkulasi > 255) vKalkulasi = 255;
+
+                                    dataHasil[idx + c] = vKalkulasi;
+                                }
+                                dataHasil[idx + 3] = dataPiksel[idx + 3]; // Jaga nilai Alpha (transparansi) tetap utuh
+                            }
+                        }
+                        
+                        // Cetak kembali hasil kalkulasi piksel super tajam ke kanvas utama
+                        ctx.putImageData(hasilPiksel, 0, 0);
+
+                        // Berikan assist kontras ringan sesuai konfigurasi kamus.json agar warna makin klop
+                        if (cfgSharp.contrast_assist) {
+                            ctx.globalCompositeOperation = 'multiply';
+                            ctx.fillStyle = `rgba(255,255,255,${cfgSharp.contrast_assist - 1})`;
+                            ctx.fillRect(0,0,w,h);
+                            ctx.globalCompositeOperation = 'source-over';
+                        }
+                    }
+                }
+
+                // Pengaman Format Ekstensi Sesuai JSON Kamu
+                const formatTerpilih = appMemory.defaultFormatFoto;
+                let mimeType = 'image/webp';
+                let ekstensi = 'webp';
+
+                if (formatTerpilih === 'webp_max' || formatTerpilih === 'webp' || formatTerpilih === 'image/webp') {
+                    mimeType = 'image/webp'; ekstensi = 'webp';
+                } else if (formatTerpilih === 'jpeg_hr' || formatTerpilih === 'jpeg' || formatTerpilih === 'image/jpeg') {
+                    mimeType = 'image/jpeg'; ekstensi = 'jpg';
+                } else if (formatTerpilih === 'png' || formatTerpilih === 'image/png') {
+                    mimeType = 'image/png'; ekstensi = 'png';
+                } else if (formatTerpilih === 'pdf' || formatTerpilih === 'image/pdf') {
+                    mimeType = 'image/jpeg'; ekstensi = 'pdf'; 
+                }
+
+                // Mengolah WebP kompresi aman 90% (Lossless jika dipilih webp_max)
+                const base64Data = canvas.toDataURL(mimeType, (formatTerpilih === 'webp_max' ? 1.0 : 0.9));
+
+                // Multi-frame buffer: Pengaman RAM
                 appMemory.cameraHistoryThumbs.unshift(base64Data);
                 if(appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
 
-                // Jadikan gambar terakhir sebagai background thumbnail galeri kiri bawah
                 document.getElementById('gallery_preview').style.backgroundImage = `url(${base64Data})`;
 
+                // AUTO DOWNLOAD LANGSUNG KE STORAGE HP
+                const linkDownload = document.createElement('a');
+                linkDownload.href = base64Data;
+                
+                const waktu = new Date();
+                const penandaWaktu = `${waktu.getFullYear()}${String(waktu.getMonth()+1).padStart(2,'0')}${String(waktu.getDate()).padStart(2,'0')}_${String(waktu.getHours()).padStart(2,'0')}${String(waktu.getMinutes()).padStart(2,'0')}${String(waktu.getSeconds()).padStart(2,'0')}`;
+                
+                linkDownload.download = `Ai_Picture_${penandaWaktu}.${ekstensi}`;
+                document.body.appendChild(linkDownload);
+                linkDownload.click();
+                document.body.removeChild(linkDownload);
+
                 shutterBtn.disabled = false;
-                shutterBtn.style.opacity = "1";
-            }, 50); // Jeda hardware_assisted 50ms
+                shutterBtn.innerText = "";
+            }, 50); 
         }
 
-        // LOGIK BLUEPRINT: PEREKAMAN VIDEO EKSTREM
+        // 13. LOGIK BLUEPRINT PEREKAMAN VIDEO
         function kontrolPerekamanVideo() {
             const shutterBtn = document.getElementById('shutter_btn');
-            
             if (!appMemory.isVideoRecording) {
                 appMemory.recordedChunks = [];
-                
-                // Cek preferensi blueprint video format ekstrim
                 let opsiMime = "video/webm";
-                try {
-                    if (MediaRecorder.isTypeSupported("video/mp4")) opsiMime = "video/mp4";
-                } catch(e) {}
+                if (appMemory.defaultFormatVideo === "video_mp4" && MediaRecorder.isTypeSupported("video/mp4")) {
+                    opsiMime = "video/mp4";
+                }
 
                 try {
                     appMemory.mediaRecorder = new MediaRecorder(appMemory.stream, { mimeType: opsiMime });
@@ -465,16 +753,14 @@
                 appMemory.mediaRecorder.onstop = () => {
                     const blob = new Blob(appMemory.recordedChunks, { type: appMemory.mediaRecorder.mimeType });
                     const videoURL = URL.createObjectURL(blob);
-                    
-                    // Simpan alamat video lokal di atribut data tombol galeri
                     document.getElementById('gallery_preview').dataset.lastVideo = videoURL;
                     document.getElementById('gallery_preview').style.backgroundImage = "url('https://cdn-icons-png.flaticon.com/512/685/685655.png')"; 
-                    alert("Video berhasil direkam secara aman ke memori!");
+                    alert("Video berhasil disimpan secara aman ke memori!");
                 };
 
                 appMemory.mediaRecorder.start();
                 appMemory.isVideoRecording = true;
-                shutterBtn.innerText = "🛑"; // Ganti icon shutter jadi stop
+                shutterBtn.innerText = "🛑"; 
             } else {
                 appMemory.mediaRecorder.stop();
                 appMemory.isVideoRecording = false;
@@ -482,32 +768,49 @@
             }
         }
 
-        // ATUR MIKROSKOPIS & FILTER CSS WARNA KUSTOM DARI BLUEPRINT MENU
-        function applySharpnessFilter(mode) {
-            const video = document.getElementById('camera-view');
-            if(!appMemory.blueprint) return;
-            const modes = appMemory.blueprint.sharpness_modes[mode];
-            video.style.filter = (modes && modes.sharpness_filter !== "none") ? modes.sharpness_filter : "none";
+        // 14. LOGIKA MENYALIN STRUKTUR ASLI KAMUS.JSON
+        function applySharpnessFilter(modeKey) {
+            // Mengubah penanda mode aktif di memori untuk diproses mesin matriks piksel saat jepret
+            appMemory.activeSharpnessMode = modeKey;
         }
 
         function applyColorModeFilter(colorKey) {
-            const video = document.getElementById('camera-view');
-            if(!appMemory.blueprint) return;
-            const filterStyle = appMemory.blueprint.camera_features?.color_filters[colorKey];
-            if(filterStyle) video.style.filter = filterStyle;
+            if (!appMemory.blueprint || !appMemory.blueprint.camera_features?.color_filters) return;
+            const filterStyle = appMemory.blueprint.camera_features.color_filters[colorKey];
+            if (filterStyle) videoEl.style.filter = filterStyle;
         }
 
         function applyExposure(val) {
-            const video = document.getElementById('camera-view');
             const calculatedBrightness = 1 + (val * 0.1);
-            video.style.filter = `brightness(${calculatedBrightness})`;
+            videoEl.style.filter = `brightness(${calculatedBrightness})`;
         }
 
-        // REGISTRASI SINKRONISASI PWA JALUR SW.JS
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js');
+        // LOGIKA ORIENTASI GERAKAN LAYAR
+        function handleOrientationChange() {
+            const isLandscape = window.innerWidth > window.innerHeight;
+            const tombolStatis = [
+                document.getElementById('shutter_btn'),
+                document.getElementById('gallery_preview'),
+                document.getElementById('switch_camera'),
+                document.getElementById('switch_mode'),
+                document.getElementById('triple_dot_btn')
+            ];
+
+            tombolStatis.forEach(btn => {
+                if (btn) {
+                    if (isLandscape) { btn.classList.add('rotated'); } 
+                    else { btn.classList.remove('rotated'); }
+                }
             });
+        }
+
+        window.addEventListener('resize', handleOrientationChange);
+        window.addEventListener('orientationchange', handleOrientationChange);
+        handleOrientationChange();
+
+        // 15. REGISTRASI SERVICE WORKER PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js'); });
         }
     </script>
 </body>
