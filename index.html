@@ -185,6 +185,7 @@
 
         /* --- SAKELAR CSS OTOMATIS SAAT LAYAR DIMIRINGKAN (LANDSCAPE) --- */
         @media (orientation: landscape) {
+            /* Pindahkan wadah ke kanan di bawah menu titik tiga */
             #left_mid_controls {
                 top: 80px;
                 right: 20px;
@@ -193,18 +194,27 @@
                 flex-direction: row-reverse; 
                 align-items: center;
             }
+
+            /* Slider memanjang otomatis saat miring */
             #expSlider {
                 transform: none; 
                 width: 100%;     
             }
+
+            /* Tombol Jepret Waktu tetap berada di samping/bawah bright */
             #timer_btn {
                 width: 45px;
                 height: 45px;
             }
         }
 
-        .rotate-icon { transition: transform 0.3s ease-out; }
-        .rotated { transform: rotate(90deg); }
+        /* --- EFEK ROTASI ICON SAJA UNTUK TOMBOL UTAMA --- */
+        .rotate-icon {
+            transition: transform 0.3s ease-out;
+        }
+        .rotated {
+            transform: rotate(90deg); 
+        }
 
         /* Angka Indikator Zoom di Tengah Atas Layar */
         #zoom-indicator {
@@ -269,7 +279,6 @@
             isVideoRecording: false,
             defaultFormatFoto: "webp_max",
             defaultFormatVideo: "video_webm",
-            activeSharpnessMode: "max", // Sesuai default cetak biru kamu
             
             // MEMORI SISTEM INTERAKSI ZOOM
             currentZoom: 1,
@@ -284,9 +293,10 @@
             document.getElementById('timer_btn').innerText = detikAktif === 0 ? "⏱️" : `⏱️ ${detikAktif}s`;
         };
 
-        // 3. INTERAKSI TOMBOL SWITCH MODE
+        // 3. INTERAKSI TOMBOL SWITCH MODE (Mencegah Kebocoran Audio Secara Total)
         document.getElementById('switch_mode').onclick = () => {
             const shutterBtn = document.getElementById('shutter_btn');
+            
             if (appMemory.currentMode === "foto") {
                 appMemory.currentMode = "video";
                 document.getElementById('switch_mode').innerText = "📹";
@@ -303,6 +313,7 @@
         // 4. INTERAKSI TOMBOL PRATINJAU FOTO (GALLERY PREVIEW)
         document.getElementById('gallery_preview').onclick = () => {
             const galBtn = document.getElementById('gallery_preview');
+            
             if (appMemory.currentMode === "video" && galBtn.dataset.lastVideo) {
                 window.open(galBtn.dataset.lastVideo);
             } else if (appMemory.cameraHistoryThumbs.length > 0) {
@@ -320,15 +331,17 @@
                 appMemory.blueprint = data;
                 applyBlueprintUI();
                 
+                // Set default settings dari JSON
                 if (data.settings) {
                     if (data.settings.default_format) appMemory.defaultFormatFoto = data.settings.default_format;
-                    if (data.settings.default_sharpness) appMemory.activeSharpnessMode = data.settings.default_sharpness;
+                    if (data.settings.default_sharpness) applySharpnessFilter(data.settings.default_sharpness);
                     if (data.settings.default_color_mode) applyColorModeFilter(data.settings.default_color_mode);
                 }
+                
                 startCamera(false);
             })
             .catch(err => {
-                console.warn("Gagal sinkron JSON terbaru, menggunakan UI default:", err);
+                console.warn("Gagal sinkron JSON terbaru dari GitHub, menggunakan UI default:", err);
                 startCamera(false);
             });
 
@@ -386,7 +399,7 @@
         document.getElementById('camera-view').onclick = () => { document.getElementById('dropdownMenu').style.display = 'none'; };
         document.getElementById('expSlider').oninput = (e) => applyExposure(e.target.value);
 
-        // 8. LOGIKA PINCH-TO-ZOOM
+        // 8. LOGIKA PINCH-TO-ZOOM (Hardware-Assisted Menggunakan Touch Events)
         const videoEl = document.getElementById('camera-view');
         
         videoEl.addEventListener('touchstart', (e) => {
@@ -505,14 +518,22 @@
                 btn.innerText = opsi.label;
                 
                 Object.assign(btn.style, {
-                    width: '100%', padding: '14px', background: '#1c1c1e', border: 'none',
-                    color: '#fff', textAlign: 'center', fontSize: '15px', borderRadius: '8px', cursor: 'pointer'
+                    width: '100%',
+                    padding: '14px',
+                    background: '#1c1c1e',
+                    border: 'none',
+                    color: '#fff',
+                    textAlign: 'center',
+                    fontSize: '15px',
+                    borderRadius: '8px',
+                    cursor: 'pointer'
                 });
 
                 btn.onclick = () => {
                     aksiPilihan(opsi.value, opsi.label);
                     tutupPopUpGulir();
                 };
+
                 container.appendChild(btn);
             });
 
@@ -594,125 +615,59 @@
             }
         }
 
-        // ============================================================
-        // 12. MESIN INTI: AMBIL FOTO + KALKULASI MATRIKS KETAJAMAN PIKSEL
-        // ============================================================
+        // 12. LOGIK AMBIL FOTO + OTOMATIS DOWNLOAD LANGSUNG KE MEMORI HP
         function ambilFotoWebp() {
             const shutterBtn = document.getElementById('shutter_btn');
             shutterBtn.disabled = true;
-            shutterBtn.innerText = '⏳...'; // Anti-crash loading
+            shutterBtn.innerText = '⏳...'; // Mencegah RAM 2GB Overload (anti_crash_loading)
 
             setTimeout(() => {
                 const video = document.getElementById('camera-view');
                 const canvas = document.getElementById('capture-canvas');
                 const ctx = canvas.getContext('2d');
 
-                const w = video.videoWidth || 640;
-                const h = video.videoHeight || 480;
-                canvas.width = w;
-                canvas.height = h;
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
                 
-                // 1. Ambil filter warna real-time dasar dari layar
                 ctx.filter = video.style.filter;
                 
                 // CROP ZOOM KANVAS DIGITAL
                 const z = appMemory.currentZoom;
-                const sw = w / z;
-                const sh = h / z;
-                const sx = (w - sw) / 2;
-                const sy = (h - sh) / 2;
+                const sw = canvas.width / z;
+                const sh = canvas.height / z;
+                const sx = (canvas.width - sw) / 2;
+                const sy = (canvas.height - sh) / 2;
                 
-                // Gambar Lapisan Utama (Warna Padat Asli)
-                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-                // 2. PROSES KETAJAMAN BERLAPIS (UNSHARP BLENDING)
-                if (appMemory.blueprint && appMemory.blueprint.sharpness_modes) {
-                    const cfgSharp = appMemory.blueprint.sharpness_modes[appMemory.activeSharpnessMode];
-                    if (cfgSharp && cfgSharp.level > 1) {
-                        
-                        // Ambil data piksel asli untuk referensi warna
-                        const dataAsli = ctx.getImageData(0, 0, w, h);
-                        const pikselAsli = dataAsli.data;
-                        
-                        // Buat canvas bantuan di memori khusus untuk mendeteksi tekstur garis
-                        const bufferCanvas = document.createElement('canvas');
-                        bufferCanvas.width = w;
-                        bufferCanvas.height = h;
-                        const bCtx = bufferCanvas.getContext('2d');
-                        bCtx.drawImage(canvas, 0, 0);
-                        
-                        const dataTekstur = bCtx.getImageData(0, 0, w, h);
-                        const pikselTekstur = dataTekstur.data;
-
-                        // Ambil level kekuatan dari JSON (3, 5, atau 10)
-                        // Kita jinakkan intensitasnya agar level 10 tetap natural tapi sangat tajam
-                        const kekuatan = cfgSharp.level * 0.12; 
-
-                        // Algoritma Edge-Detection Ringan untuk mengambil garis tekstur saja
-                        for (let y = 1; y < h - 1; y++) {
-                            for (let x = 1; x < w - 1; x++) {
-                                const idx = (y * w + x) * 4;
-                                const idxAtas = ((y - 1) * w + x) * 4;
-                                const idxKiri = (y * w + (x - 1)) * 4;
-
-                                for (let c = 0; c < 3; c++) {
-                                        // Cari selisih gradien (garis tepi)
-                                        const selisih = pikselAsli[idx + c] - pikselAsli[idxAtas + c];
-                                        const selisihKiri = pikselAsli[idx + c] - pikselAsli[idxKiri + c];
-                                        const totalGaris = (selisih + selisihKiri) * kekuatan;
-
-                                        // SUNTIKKAN KETAJAMAN KE FOTO ASLI TANPA MERUSAK WARNA UTAMA
-                                        let warnaBaru = pikselAsli[idx + c] + totalGaris;
-
-                                        // Kunci batas warna 0 - 255 agar warna tidak pudar/pecah
-                                        if (warnaBaru < 0) warnaBaru = 0;
-                                        if (warnaBaru > 255) warnaBaru = 255;
-
-                                        pikselTekstur[idx + c] = warnaBaru;
-                                }
-                                pikselTekstur[idx + 3] = pikselAsli[idx + 3];
-                            }
-                        }
-                        
-                        // Cetak hasil gabungan tekstur tajam + warna padat ke kanvas utama
-                        bCtx.putImageData(dataTekstur, 0, 0);
-                        ctx.clearRect(0, 0, w, h);
-                        ctx.drawImage(bufferCanvas, 0, 0);
-
-                        // Berikan kompensasi kepekatan warna otomatis agar warna tidak pudar (Anti-Fade Assist)
-                        if (cfgSharp.contrast_assist) {
-                            ctx.globalCompositeOperation = 'color-burn'; // Mengunci kerapatan warna
-                            ctx.fillStyle = `rgba(0,0,0,0.03)`; // Sentuhan kegelapan mikro agar warna padat
-                            ctx.fillRect(0,0,w,h);
-                            ctx.globalCompositeOperation = 'source-over'; // Kembalikan mode normal
-                        }
-                    }
-                }
-
-                // Pengaman Format Ekstensi Sesuai JSON
+                // Manajemen Pemetaan Ekstrem Format Sesuai JSON Kamu
                 const formatTerpilih = appMemory.defaultFormatFoto;
                 let mimeType = 'image/webp';
                 let ekstensi = 'webp';
 
                 if (formatTerpilih === 'webp_max' || formatTerpilih === 'webp' || formatTerpilih === 'image/webp') {
-                    mimeType = 'image/webp'; ekstensi = 'webp';
+                    mimeType = 'image/webp';
+                    ekstensi = 'webp';
                 } else if (formatTerpilih === 'jpeg_hr' || formatTerpilih === 'jpeg' || formatTerpilih === 'image/jpeg') {
-                    mimeType = 'image/jpeg'; ekstensi = 'jpg';
+                    mimeType = 'image/jpeg';
+                    ekstensi = 'jpg';
                 } else if (formatTerpilih === 'png' || formatTerpilih === 'image/png') {
-                    mimeType = 'image/png'; ekstensi = 'png';
+                    mimeType = 'image/png';
+                    ekstensi = 'png';
                 } else if (formatTerpilih === 'pdf' || formatTerpilih === 'image/pdf') {
-                    mimeType = 'image/jpeg'; ekstensi = 'pdf'; 
+                    mimeType = 'image/jpeg'; 
+                    ekstensi = 'pdf'; 
                 }
 
-                const base64Data = canvas.toDataURL(mimeType, (formatTerpilih === 'webp_max' ? 1.0 : 0.9));
+                const base64Data = canvas.toDataURL(mimeType, 0.9);
 
-                // Multi-frame buffer
+                // Multi-frame buffer: Pengaman RAM
                 appMemory.cameraHistoryThumbs.unshift(base64Data);
                 if(appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
 
                 document.getElementById('gallery_preview').style.backgroundImage = `url(${base64Data})`;
 
-                // AUTO DOWNLOAD
+                // EKSEKUSI AUTO DOWNLOAD GAIB KE HARDWARE STORAGE
                 const linkDownload = document.createElement('a');
                 linkDownload.href = base64Data;
                 
@@ -732,8 +687,10 @@
         // 13. LOGIK BLUEPRINT PEREKAMAN VIDEO
         function kontrolPerekamanVideo() {
             const shutterBtn = document.getElementById('shutter_btn');
+            
             if (!appMemory.isVideoRecording) {
                 appMemory.recordedChunks = [];
+                
                 let opsiMime = "video/webm";
                 if (appMemory.defaultFormatVideo === "video_mp4" && MediaRecorder.isTypeSupported("video/mp4")) {
                     opsiMime = "video/mp4";
@@ -752,6 +709,7 @@
                 appMemory.mediaRecorder.onstop = () => {
                     const blob = new Blob(appMemory.recordedChunks, { type: appMemory.mediaRecorder.mimeType });
                     const videoURL = URL.createObjectURL(blob);
+                    
                     document.getElementById('gallery_preview').dataset.lastVideo = videoURL;
                     document.getElementById('gallery_preview').style.backgroundImage = "url('https://cdn-icons-png.flaticon.com/512/685/685655.png')"; 
                     alert("Video berhasil disimpan secara aman ke memori!");
@@ -767,10 +725,17 @@
             }
         }
 
-        // 14. LOGIKA MENYALIN STRUKTUR ASLI KAMUS.JSON
+        // 14. LOGIKA FILTER KETAJAMAN & WARNA (MENYALIN STRUKTUR ASLI KAMUS.JSON)
         function applySharpnessFilter(modeKey) {
-            // Mengubah penanda mode aktif di memori untuk diproses mesin matriks piksel saat jepret
-            appMemory.activeSharpnessMode = modeKey;
+            if (!appMemory.blueprint || !appMemory.blueprint.sharpness_modes) return;
+            const config = appMemory.blueprint.sharpness_modes[modeKey];
+            if (config) {
+                if (config.sharpness_filter !== "none") {
+                    videoEl.style.filter = config.sharpness_filter;
+                } else {
+                    videoEl.style.filter = `contrast(${config.contrast}) brightness(${config.brightness})`;
+                }
+            }
         }
 
         function applyColorModeFilter(colorKey) {
@@ -797,8 +762,11 @@
 
             tombolStatis.forEach(btn => {
                 if (btn) {
-                    if (isLandscape) { btn.classList.add('rotated'); } 
-                    else { btn.classList.remove('rotated'); }
+                    if (isLandscape) {
+                        btn.classList.add('rotated'); 
+                    } else {
+                        btn.classList.remove('rotated');
+                    }
                 }
             });
         }
