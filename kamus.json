@@ -1,6 +1,6 @@
 {
   "app_metadata": {
-    "application_name": "Kamera Web",
+    "application_name": "Ai Picture",
     "version": "1.0.0",
     "device_target": "Xiaomi 2GB RAM",
     "stability_mode": "hardware_assisted"
@@ -13,9 +13,9 @@
   },
 
   "sharpness_modes": {
-    "low": { "contrast": 0.9, "brightness": 1.0, "sharpness_filter": "none" },
-    "standar": { "contrast": 1.0, "brightness": 1.0, "sharpness_filter": "none" },
-    "max": { "contrast": 1.15, "brightness": 1.02, "sharpness_filter": "contrast(1.15) brightness(1.02)" }
+    "low": { "level": 3, "contrast_assist": 1.02, "desc": "Ketajaman Makro 3x (Serat Kain)" },
+    "standar": { "level": 5, "contrast_assist": 1.05, "desc": "Ketajaman Tinggi 5x (Garis Tegas)" },
+    "max": { "level": 10, "contrast_assist": 1.10, "desc": "Ketajaman Mikroskopis 10x (Detail Mikro)" }
   },
 
   "camera_features": {
@@ -28,6 +28,33 @@
       "natural": "saturate(1.1) contrast(0.95)",
       "malam": "saturate(1.2) contrast(1.3) brightness(1.6)",
       "teks": "saturate(0.0) contrast(1.8) brightness(0.9)"
+    }
+  },
+
+  "auto_exposure_stabilizer": {
+    "enabled": true,
+    "analysis_interval_ms": 200,
+    "target_luminance_sweet_spot": 128,
+    "conditions": {
+      "indoor_lowlight": {
+        "trigger_luminance_below": 100,
+        "adjust_filter": "brightness(1.18) contrast(1.05) saturate(1.05)",
+        "anti_noise_blur": 0.3
+      },
+      "outdoor_bright": {
+        "trigger_luminance_above": 200,
+        "adjust_filter": "brightness(0.90) contrast(0.95)"
+      },
+      "backlight_siluet": {
+        "detection_mode": "center_vs_edges_delta",
+        "trigger_delta_above": 90,
+        "adjust_filter": "brightness(1.30) contrast(1.15)",
+        "force_layer": "shadow_lift"
+      },
+      "lamp_highlight": {
+        "suppress_clipping": true,
+        "max_white_threshold": 245
+      }
     }
   },
 
@@ -118,9 +145,9 @@
       "label": "✨ Opsi Ketajaman Mikroskopis",
       "type": "parent_menu",
       "sub_menu": [
-        {"id": "sharp_low", "label": "Ketajaman: Low", "action": "setSharpness", "value": "low"},
-        {"id": "sharp_std", "label": "Ketajaman: Standar", "action": "setSharpness", "value": "standar"},
-        {"id": "sharp_max", "label": "Ketajaman: Max", "action": "setSharpness", "value": "max"}
+        {"id": "sharp_low", "label": "Ketajaman: Low (3x)", "action": "setSharpness", "value": "low"},
+        {"id": "sharp_std", "label": "Ketajaman: Standar (5x)", "action": "setSharpness", "value": "standar"},
+        {"id": "sharp_max", "label": "Ketajaman: Max (10x Ekstrem)", "action": "setSharpness", "value": "max"}
       ]
     },
     {
