@@ -484,6 +484,11 @@
                             if (item.action === "setColorMode") {
                                 applyColorModeFilter(item.value);
                                 alert(`Mode Warna diatur ke: ${item.label}`);
+                            } else if (item.action === "setAntiGlare") {
+                                // Memanggil fungsi anti-silau tombol terpisah yang baru saja kita sinkronkan
+                                setAntiGlareMode(item.value);
+                            } else if (item.action === "toggleStability") {
+                                alert("🛡️ Kamera Stabil Aktif: Mengunci koordinat getaran lensa.");
                             } else if (item.action === "toggleStability") {
                                 alert("🛡️ Kamera Stabil Aktif: Mengunci koordinat getaran lensa.");
                             } else if (item.action === "toggleFocusBox") {
@@ -778,6 +783,32 @@
             videoEl.style.filter = `brightness(${calculatedBrightness})`;
         }
 
+        // Pastikan state ini ada di memori aplikasi Anda
+        appMemory.activeAntiGlareMode = "normal"; // Opsi: "normal", "jendela", "kain"
+        
+        function setAntiGlareMode(modeKey) {
+            appMemory.activeAntiGlareMode = modeKey;
+            
+            // Kembalikan filter ke setelan warna dasar terlebih dahulu
+            const video = document.getElementById('camera-view');
+            let baseFilter = "saturate(1.0) contrast(1.0)";
+            if (appMemory.blueprint?.camera_features?.color_filters && appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode]) {
+                baseFilter = appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode];
+            }
+            video.style.filter = baseFilter;
+        
+            if (modeKey === "jendela") {
+                alert("🪟 Kamera dipetakan untuk Jendela. Meredam backlight & silau luar.");
+            } else if (modeKey === "kain") {
+                alert("👕 Kamera dipetakan untuk Kain. Mengunci serat & meredam pantulan lampu.");
+            } else {
+                alert("🔄 Kamera kembali ke Mode Normal.");
+            }
+            
+            // Jalankan kalkulasi instan satu kali saat tombol ditekan
+            executeExposureStabilizer();
+        }
+
         // ============================================================
         // MESIN TAMBAHAN: REAL-TIME LUMINANCE ANALYSIS (SMART EXPOSURE)
         // ============================================================
@@ -800,74 +831,75 @@
             const video = document.getElementById('camera-view');
             const aCanvas = document.getElementById('analysis-canvas');
             const aCtx = aCanvas.getContext('2d');
-
+        
             if (video.videoWidth === 0 || video.videoHeight === 0) return;
-
-            // Gambar area kamera ke canvas super kecil berukuran 20x20 piksel (Sangat hemat RAM)
-            aCtx.drawImage(video, 0, 0, 20, 20);
             
-            // Baca data piksel
+            // Ambil basis data stabilizer dari blueprint JSON
+            const stabilizerCfg = appMemory.blueprint?.auto_exposure_stabilizer;
+            if (!stabilizerCfg || !stabilizerCfg.enabled) return;
+        
+            // JIKA MODE NORMAL: Gunakan logika auto-exposure bawaan kamus agar RAM 2GB tetap hemat
+            if (appMemory.activeAntiGlareMode === "normal") {
+                aCtx.drawImage(video, 0, 0, 20, 20);
+                const imgData = aCtx.getImageData(0, 0, 20, 20);
+                const pixels = imgData.data;
+                let totalLumi = 0;
+                for (let i = 0; i < pixels.length; i += 4) {
+                    totalLumi += (0.299 * pixels[i]) + (0.587 * pixels[i+1]) + (0.114 * pixels[i+2]);
+                }
+                const avgLumi = totalLumi / (pixels.length / 4);
+                
+                let baseFilter = stabilizerCfg.conditions.outdoor_bright.adjust_filter; // default fallback
+                if (avgLumi < stabilizerCfg.conditions.indoor_lowlight.trigger_luminance_below) {
+                    baseFilter = stabilizerCfg.conditions.indoor_lowlight.adjust_filter;
+                } else if (avgLumi > stabilizerCfg.conditions.outdoor_bright.trigger_luminance_above) {
+                    baseFilter = stabilizerCfg.conditions.outdoor_bright.adjust_filter;
+                } else {
+                    baseFilter = "brightness(1.0) contrast(1.0) saturate(1.0)";
+                }
+                
+                // Gabungkan dengan filter warna aktif (misal: natural/asli)
+                let activeColor = appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode] || "";
+                video.style.filter = `${activeColor} ${baseFilter}`.trim();
+                return; 
+            }
+        
+            // JIKA MODE JENDELA / KAIN AKTIF: Mulai kompensasi semi-otomatis adaptif
+            aCtx.drawImage(video, 0, 0, 20, 20);
             const imgData = aCtx.getImageData(0, 0, 20, 20);
             const pixels = imgData.data;
             
-            let totalLuminance = 0;
-            let centerLuminance = 0;
-            let edgeLuminance = 0;
+            let overExposedCount = 0;
             let totalPixels = pixels.length / 4;
-            let centerCount = 0;
-            let edgeCount = 0;
-
+        
             for (let i = 0; i < pixels.length; i += 4) {
-                const r = pixels[i];
-                const g = pixels[i+1];
-                const b = pixels[i+2];
-                
-                // Formula Luminance Standar Persepsi Mata Manusia
-                const luminance = (0.299 * r) + (0.587 * g) + (0.114 * b);
-                totalLuminance += luminance;
-
-                // Hitung posisi piksel (apakah di area tengah atau pinggir) untuk deteksi backlight/siluet
-                const pixelIdx = i / 4;
-                const x = pixelIdx % 20;
-                const y = Math.floor(pixelIdx / 20);
-
-                if (x >= 6 && x <= 13 && y >= 6 && y <= 13) {
-                    centerLuminance += luminance;
-                    centerCount++;
-                } else {
-                    edgeLuminance += luminance;
-                    edgeCount++;
+                const luminance = (0.299 * pixels[i]) + (0.587 * pixels[i+1]) + (0.114 * pixels[i+2]);
+                // Baca batas silau maksimal dari lamp_highlight di JSON (245) atau default 210
+                const whiteThreshold = stabilizerCfg.conditions.lamp_highlight?.max_white_threshold || 210;
+                if (luminance > whiteThreshold) {
+                    overExposedCount++;
                 }
             }
-
-            const avgLuminance = totalLuminance / totalPixels;
-            const avgCenter = centerLuminance / centerCount;
-            const avgEdge = edgeLuminance / edgeCount;
-            const deltaBacklight = avgEdge - avgCenter; // Selisih kecerahan pinggir vs tengah
-
-            // Ambil data filter dasar dari menu warna aktif saat ini di kamus.json
-            let baseFilter = "saturate(1.0) contrast(1.0)";
-            if (appMemory.blueprint?.camera_features?.color_filters && appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode]) {
-                baseFilter = appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode];
+        
+            const glareIntensity = overExposedCount / totalPixels; // Skala 0.0 - 1.0 seberapa luas luapan cahayanya
+            let dynamicFilter = "";
+        
+            // Membaca basis perhitungan filter langsung dari data kondisi JSON yang sinkron
+            if (appMemory.activeAntiGlareMode === "jendela") {
+                const cfg = stabilizerCfg.conditions.anti_glare_jendela;
+                let autoBrightness = cfg.base_brightness - (glareIntensity * cfg.max_dim_offset);
+                let autoContrast = cfg.base_contrast + (glareIntensity * cfg.max_contrast_offset);
+                dynamicFilter = ` brightness(${autoBrightness.toFixed(2)}) contrast(${autoContrast.toFixed(2)}) saturate(${cfg.saturate})`;
+                
+            } else if (appMemory.activeAntiGlareMode === "kain") {
+                const cfg = stabilizerCfg.conditions.anti_glare_kain;
+                let autoBrightness = cfg.base_brightness - (glareIntensity * cfg.max_dim_offset);
+                let autoContrast = cfg.base_contrast + (glareIntensity * cfg.max_contrast_offset);
+                dynamicFilter = ` brightness(${autoBrightness.toFixed(2)}) contrast(${autoContrast.toFixed(2)}) saturate(${cfg.saturate})`;
             }
-
-            // Gabungkan filter warna dasar dengan filter koreksi cahaya otomatis
-            let exposureAdjustment = "";
-            const cfgExp = appMemory.blueprint.auto_exposure_stabilizer.conditions;
-
-            if (deltaBacklight > cfgExp.backlight_siluet.trigger_delta_above) {
-                // KONDISI 1: MELAWAN CAHAYA (BACKLIGHT / SILUET DETECTED)
-                exposureAdjustment = ` ${cfgExp.backlight_siluet.adjust_filter}`;
-            } else if (avgLuminance < cfgExp.indoor_lowlight.trigger_luminance_below) {
-                // KONDISI 2: DALAM RUANGAN REDUP (INDOOR LOWLIGHT)
-                exposureAdjustment = ` ${cfgExp.indoor_lowlight.adjust_filter}`;
-            } else if (avgLuminance > cfgExp.outdoor_bright.trigger_luminance_above) {
-                // KONDISI 3: LUAR RUANGAN SANGAT TERANG (OUTDOOR BRIGHT)
-                exposureAdjustment = ` ${cfgExp.outdoor_bright.adjust_filter}`;
-            }
-
-            // Terapkan gabungan filter secara mulus ke Viewfinder Kamera
-            video.style.filter = `${baseFilter}${exposureAdjustment}`.trim();
+        
+            let activeColor = appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode] || "saturate(1.0) contrast(1.0)";
+            video.style.filter = `${activeColor}${dynamicFilter}`.trim();
         }
 
         // LOGIKA ORIENTASI GERAKAN LAYAR
