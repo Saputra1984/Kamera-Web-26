@@ -54,6 +54,20 @@
       "lamp_highlight": {
         "suppress_clipping": true,
         "max_white_threshold": 245
+      },
+      "anti_glare_jendela": {
+        "base_brightness": 0.90,
+        "max_dim_offset": 0.35,
+        "base_contrast": 1.15,
+        "max_contrast_offset": 0.25,
+        "saturate": 1.10
+      },
+      "anti_glare_kain": {
+        "base_brightness": 0.95,
+        "max_dim_offset": 0.15,
+        "base_contrast": 1.05,
+        "max_contrast_offset": 0.10,
+        "saturate": 1.02
       }
     }
   },
@@ -157,6 +171,9 @@
       "items": [
         {"id": "mode_malam", "label": "🌙 Mode: Malam", "action": "setColorMode", "value": "malam"},
         {"id": "mode_teks", "label": "📄 Mode: Fokus Teks", "action": "setColorMode", "value": "teks"},
+        {"id": "mode_silau_jendela", "label": "🪟 Redam Silau Jendela", "action": "setAntiGlare", "value": "jendela"},
+        {"id": "mode_silau_kain", "label": "👕 Redam Silau Kain", "action": "setAntiGlare", "value": "kain"},
+        {"id": "mode_normal_silau", "label": "📷 Kembalikan Mode Normal", "action": "setAntiGlare", "value": "normal"},
         {"id": "mode_stabil", "label": "🛡️ Mode: Stabil Kamera", "action": "toggleStability", "value": "true"},
         {"id": "mode_fokus_kotak", "label": "🎯 Kotak Kunci Fokus: On/Off", "action": "toggleFocusBox", "value": "true"}
       ]
