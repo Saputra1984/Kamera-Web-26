@@ -485,10 +485,7 @@
                                 applyColorModeFilter(item.value);
                                 alert(`Mode Warna diatur ke: ${item.label}`);
                             } else if (item.action === "setAntiGlare") {
-                                // Memanggil fungsi anti-silau tombol terpisah yang baru saja kita sinkronkan
                                 setAntiGlareMode(item.value);
-                            } else if (item.action === "toggleStability") {
-                                alert("🛡️ Kamera Stabil Aktif: Mengunci koordinat getaran lensa.");
                             } else if (item.action === "toggleStability") {
                                 alert("🛡️ Kamera Stabil Aktif: Mengunci koordinat getaran lensa.");
                             } else if (item.action === "toggleFocusBox") {
@@ -608,111 +605,270 @@
         }
 
         // ============================================================
-        // 12. MESIN INTI: AMBIL FOTO + KALKULASI MATRIKS KETAJAMAN PIKSEL
+        // 12. MESIN INTI: AMBIL FOTO + SMOOTH & EXTREME DETAIL BILINEAR FILTER
         // ============================================================
         function ambilFotoWebp() {
             const shutterBtn = document.getElementById('shutter_btn');
+            
+            // Implementasi blueprint: anti_crash_loading untuk RAM 2GB
             shutterBtn.disabled = true;
-            shutterBtn.innerText = '⏳...'; 
+            shutterBtn.innerText = '📸...'; 
+        
+            const video = document.getElementById('camera-view');
+            const canvas = document.getElementById('capture-canvas') || document.createElement('canvas');
+            canvas.id = 'capture-canvas';
+            const ctx = canvas.getContext('2d');
+        
+            const w = video.videoWidth || 640;
+            const h = video.videoHeight || 480;
+            canvas.width = w;
+            canvas.height = h;
+        
+            // Memori penampung frame sementara (Maksimal 3 frame sesuai batasan hardware_assisted)
+            let frameBuffer = [];
+            let currentFrameCount = 0;
+            const totalBurstFrames = 3; 
+        
+            // Siklus burst kilat 15ms memanfaatkan micro-shaking alami tangan untuk efek 2.5D
+            const burstInterval = setInterval(() => {
+                if (currentFrameCount < totalBurstFrames) {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = w;
+                    tempCanvas.height = h;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    // Terapkan filter warna aktif (natural, malam, teks, dll) dari metadata
+                    tempCtx.filter = window.getComputedStyle(video).filter || video.style.filter;
+        
+                    // Ambil koordinat zoom digital (extreme_digital_multiplier)
+                    const z = appMemory.currentZoom || 1;
+                    const sw = w / z;
+                    const sh = h / z;
+                    const sx = (w - sw) / 2;
+                    const sy = (h - sh) / 2;
+        
+                    tempCtx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
+                    frameBuffer.push(tempCtx.getImageData(0, 0, w, h));
+                    currentFrameCount++;
+                } else {
+                    clearInterval(burstInterval);
+                    // Masuk ke pemrosesan komputasi fotografi
+                    setTimeout(() => {
+                        prosesPemadatanMataManusia(frameBuffer, w, h);
+                    }, 10);
+                }
+            }, 15); 
 
-            setTimeout(() => {
-                const video = document.getElementById('camera-view');
-                const canvas = document.getElementById('capture-canvas');
-                const ctx = canvas.getContext('2d');
-
-                const w = video.videoWidth || 640;
-                const h = video.videoHeight || 480;
-                canvas.width = w;
-                canvas.height = h;
-                
-                // Ambil filter warna dasar gabungan real-time
-                ctx.filter = video.style.filter;
-                
-                // CROP ZOOM KANVAS DIGITAL
-                const z = appMemory.currentZoom;
-                const sw = w / z;
-                const sh = h / z;
-                const sx = (w - sw) / 2;
-                const sy = (h - sh) / 2;
-                
-                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, w, h);
-
-                // PROSES KETAJAMAN BERLAPIS (UNSHARP BLENDING)
-                if (appMemory.blueprint && appMemory.blueprint.sharpness_modes) {
-                    const cfgSharp = appMemory.blueprint.sharpness_modes[appMemory.activeSharpnessMode];
-                    if (cfgSharp && cfgSharp.level > 1) {
-                        
-                        const dataAsli = ctx.getImageData(0, 0, w, h);
-                        const pikselAsli = dataAsli.data;
-                        
-                        const bufferCanvas = document.createElement('canvas');
-                        bufferCanvas.width = w;
-                        bufferCanvas.height = h;
-                        const bCtx = bufferCanvas.getContext('2d');
-                        bCtx.drawImage(canvas, 0, 0);
-                        
-                        const dataTekstur = bCtx.getImageData(0, 0, w, h);
-                        const pikselTekstur = dataTekstur.data;
-
-                        const kekuatan = cfgSharp.level * 0.12; 
-
-                        for (let y = 1; y < h - 1; y++) {
-                            for (let x = 1; x < w - 1; x++) {
-                                const idx = (y * w + x) * 4;
-                                const idxAtas = ((y - 1) * w + x) * 4;
-                                const idxKiri = (y * w + (x - 1)) * 4;
-
-                                for (let c = 0; c < 3; c++) {
-                                        const selisih = pikselAsli[idx + c] - pikselAsli[idxAtas + c];
-                                        const selisihKiri = pikselAsli[idx + c] - pikselAsli[idxKiri + c];
-                                        const totalGaris = (selisih + selisihKiri) * kekuatan;
-
-                                        let warnaBaru = pikselAsli[idx + c] + totalGaris;
-
-                                        if (warnaBaru < 0) warnaBaru = 0;
-                                        if (warnaBaru > 255) warnaBaru = 255;
-
-                                        pikselTekstur[idx + c] = warnaBaru;
-                                }
-                                pikselTekstur[idx + 3] = pikselAsli[idx + 3];
-                            }
-                        }
-                        
-                        bCtx.putImageData(dataTekstur, 0, 0);
-                        ctx.clearRect(0, 0, w, h);
-                        ctx.drawImage(bufferCanvas, 0, 0);
-
-                        if (cfgSharp.contrast_assist) {
-                            ctx.globalCompositeOperation = 'color-burn'; 
-                            ctx.fillStyle = `rgba(0,0,0,0.03)`; 
-                            ctx.fillRect(0,0,w,h);
-                            ctx.globalCompositeOperation = 'source-over'; 
-                        }
+            // SUB-FUNGSI 1: Memadatkan 3 Frame dengan Rumus dari JSON Blueprint
+            function prosesPemadatanMataManusia(buffers, w, h) {
+                const outputData = ctx.createImageData(w, h);
+                const outPixels = outputData.data;
+            
+                const f1 = buffers[0].data;
+                const f2 = buffers[1].data;
+                const f3 = buffers[2].data;
+            
+                // 1. Ambil konfigurasi ketajaman & rumus mata dari JSON
+                const activeMode = appMemory.activeSharpnessMode || 'max';
+                const cfgSharp = {
+                    "low": { "level": 3, "contrast_assist": 1.02 },
+                    "standar": { "level": 5, "contrast_assist": 1.05 },
+                    "max": { "level": 10, "contrast_assist": 1.10 }
+                }[activeMode];
+            
+                const kekuatanSharp = cfgSharp ? (cfgSharp.level * 0.05) : 0.5;
+            
+                // Ambil parameter rumus mata manusia dari blueprint JSON
+                const eyeCfg = appMemory.blueprint?.human_eye_perception_formula || {
+                    "luminance_weights_cie1931": { "r": 0.2126, "g": 0.7152, "b": 0.0722 },
+                    "tone_mapping": { "trigger_glare_above": 190, "glare_dim_factor": 0.92, "max_clipping_safety": 245 },
+                    "gamma_correction": { "curve_exponent": 2.2 }
+                };
+            
+                const wR = eyeCfg.luminance_weights_cie1931.r;
+                const wG = eyeCfg.luminance_weights_cie1931.g;
+                const wB = eyeCfg.luminance_weights_cie1931.b;
+                const gExponent = eyeCfg.gamma_correction.curve_exponent;
+                const tGlare = eyeCfg.tone_mapping.trigger_glare_above;
+                const dFactor = eyeCfg.tone_mapping.glare_dim_factor;
+                const maxSafety = eyeCfg.tone_mapping.max_clipping_safety;
+            
+                // Ambil konfigurasi teropong dari JSON
+                const teleCfg = appMemory.blueprint?.telescope_zoom_formula || {
+                    "trigger_zoom_above": 2.0,
+                    "subpixel_interpolation": { "enhance_multiplier": 1.45 },
+                    "laplacian_edge_booster": { "boost_factor": 1.35 }
+                };
+            
+                const currentZoomLevel = appMemory.currentZoom || 1;
+                const isTelescopeActive = currentZoomLevel > teleCfg.trigger_zoom_above;
+            
+                // LOOPING INTI PER PIKSEL (HANYA BOLEH ADA 1 LOOP UTAMA)
+                for (let i = 0; i < f1.length; i += 4) {
+                    // Rata-rata dasar 3 frame kilat
+                    let rPadat = (f1[i]   + f2[i]   + f3[i])   / 3;
+                    let gPadat = (f1[i+1] + f2[i+1] + f3[i+1]) / 3;
+                    let bPadat = (f1[i+2] + f2[i+2] + f3[i+2]) / 3;
+            
+                    // TAHAP A: JALANKAN RUMUS TEROPONG (Jika sedang Zoom Jauh)
+                    if (isTelescopeActive) {
+                        const teleMultiplier = teleCfg.subpixel_interpolation.enhance_multiplier;
+                        const boostEdge = teleCfg.laplacian_edge_booster.boost_factor;
+            
+                        let diffR = (f1[i]   - rPadat) * boostEdge;
+                        let diffG = (f1[i+1] - gPadat) * boostEdge;
+                        let diffB = (f1[i+2] - bPadat) * boostEdge;
+            
+                        rPadat = rPadat + (diffR * teleMultiplier * (currentZoomLevel * 0.25));
+                        gPadat = gPadat + (diffG * teleMultiplier * (currentZoomLevel * 0.25));
+                        bPadat = bPadat + (diffB * teleMultiplier * (currentZoomLevel * 0.25));
+                    }
+            
+                    // TAHAP B: NORMALISASI DAN TONE MAPPING MATA MANUSIA
+                    let rNorm = rPadat / 255;
+                    let gNorm = gPadat / 255;
+                    let bNorm = bPadat / 255;
+            
+                    let luminanceMata = (wR * rNorm) + (wG * gNorm) + (wB * bNorm);
+            
+                    let pemetaanTonasi = luminanceMata / (1.0 + luminanceMata);
+                    if (luminanceMata > 0) {
+                        rNorm = (rNorm / luminanceMata) * pemetaanTonasi;
+                        gNorm = (gNorm / luminanceMata) * pemetaanTonasi;
+                        bNorm = (bNorm / luminanceMata) * pemetaanTonasi;
+                    }
+            
+                    // TAHAP C: GAMMA CORRECTION PERSEPSI VISUAL BIOLOGIS
+                    rNorm = Math.pow(rNorm, 1 / gExponent);
+                    gNorm = Math.pow(gNorm, 1 / gExponent);
+                    bNorm = Math.pow(bNorm, 1 / gExponent);
+            
+                    rPadat = rNorm * 255;
+                    gPadat = gNorm * 255;
+                    bPadat = bNorm * 255;
+            
+                    // TAHAP D: REDAM SILAU LOKAL (ANTI-GLARE)
+                    const brightnessAsli = (wR * (f1[i]/255)) + (wG * (f1[i+1]/255)) + (wB * (f1[i+2]/255)) * 255;
+            
+                    if (brightnessAsli > tGlare) {
+                        const faktorSilau = (brightnessAsli - tGlare) / (255 - tGlare);
+                        const pikselTerbaikR = Math.min(f1[i], f2[i], f3[i]);
+                        const pikselTerbaikG = Math.min(f1[i+1], f2[i+1], f3[i+1]);
+                        const pikselTerbaikB = Math.min(f1[i+2], f2[i+2], f3[i+2]);
+            
+                        rPadat = ((rPadat * (1 - faktorSilau)) + (pikselTerbaikR * faktorSilau)) * dFactor;
+                        gPadat = ((gPadat * (1 - faktorSilau)) + (pikselTerbaikG * faktorSilau)) * dFactor;
+                        bPadat = ((bPadat * (1 - faktorSilau)) + (pikselTerbaikB * faktorSilau)) * dFactor;
+                    }
+            
+                    // TAHAP E: SUNTIK KETAJAMAN KONTRAST 2.5D FINAL
+                    let rFinal = rPadat + ((f1[i]   - rPadat) * kekuatanSharp);
+                    let gFinal = gPadat + ((f1[i+1] - gPadat) * kekuatanSharp);
+                    let bFinal = bPadat + ((f1[i+2] - bPadat) * kekuatanSharp);
+            
+                    // Kunci ke angka aman anti-clipping
+                    outPixels[i]   = Math.max(0, Math.min(maxSafety, rFinal));
+                    outPixels[i+1] = Math.max(0, Math.min(maxSafety, gFinal));
+                    outPixels[i+2] = Math.max(0, Math.min(maxSafety, bFinal));
+                    outPixels[i+3] = f1[i+3]; // Alpha murni
+                }
+            
+                // Terapkan data piksel matang ke kanvas
+                ctx.putImageData(outputData, 0, 0);
+            
+                // EFEK OVERLAY LAYER (MASKING & DIMENSI)
+                // 1. IMPLEMENTASI RUMUS: SQUINT REFLEX (DAHI MENGKERUT / SQUINTING)
+                const squintCfg = eyeCfg.squint_reflex_mechanism;
+                if (squintCfg && squintCfg.enabled) {
+                    let totalPikselSilau = 0;
+                    const totalPiksel = f1.length / 4;
+            
+                    for (let j = 0; j < f1.length; j += 16) { 
+                        const luma = (wR * f1[j]) + (wG * f1[j+1]) + (wB * f1[j+2]);
+                        if (luma > tGlare) totalPikselSilau++;
+                    }
+            
+                    const persentaseSilau = totalPikselSilau / (totalPiksel / 4);
+            
+                    if (persentaseSilau > squintCfg.trigger_total_glare_pct) {
+                        const gradientMata = ctx.createLinearGradient(0, 0, 0, h);
+                        const vAlpha = squintCfg.vignette_shadow_alpha;
+            
+                        gradientMata.addColorStop(0, `rgba(0, 0, 0, ${vAlpha})`);
+                        gradientMata.addColorStop(0.15, `rgba(0, 0, 0, ${vAlpha * 0.4})`);
+                        gradientMata.addColorStop(0.5, 'rgba(0, 0, 0, 0)');
+                        gradientMata.addColorStop(0.85, `rgba(0, 0, 0, ${vAlpha * 0.4})`);
+                        gradientMata.addColorStop(1, `rgba(0, 0, 0, ${vAlpha})`);
+            
+                        ctx.globalCompositeOperation = 'source-over';
+                        ctx.fillStyle = gradientMata;
+                        ctx.fillRect(0, 0, w, h);
+            
+                        ctx.globalCompositeOperation = 'overlay';
+                        ctx.fillStyle = `rgba(255, 255, 255, ${(squintCfg.center_sharpness_boost - 1).toFixed(3)})`;
+                        ctx.beginPath();
+                        ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.35, 0, 2 * Math.PI);
+                        ctx.fill();
+                        ctx.globalCompositeOperation = 'source-over';
                     }
                 }
+            
+                // 2. IMPLEMENTASI RUMUS: TUNNEL VISION ANTI-GLARE (ISOLASI MATA TEROPONG)
+                if (teleCfg && teleCfg.tunnel_vision_isolation?.enabled && currentZoomLevel > teleCfg.trigger_zoom_above) {
+                    const tunnelIso = teleCfg.tunnel_vision_isolation;
+                    const cx = w / 2;
+                    const cy = h / 2;
+                    const maxRadius = Math.sqrt(cx*cx + cy*cy);
+                    const innerRadius = maxRadius * tunnelIso.fovea_focus_radius_pct;
+            
+                    const topengTeropong = ctx.createRadialGradient(cx, cy, innerRadius, cx, cy, maxRadius);
+                    topengTeropong.addColorStop(0, 'rgba(0,0,0,0)');
+                    topengTeropong.addColorStop(tunnelIso.tunnel_smoothness_gradient, 'rgba(0,0,0,0.05)');
+                    topengTeropong.addColorStop(1, `rgba(0, 0, 0, ${tunnelIso.peripheral_light_suppression})`);
+            
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.fillStyle = topengTeropong;
+                    ctx.fillRect(0, 0, w, h);
+                }
+            
+                // 3. SENTUHAN AKHIR: Efek bayangan mikro 2.5D kontras asisten
+                const contrastAssist = cfgSharp ? cfgSharp.contrast_assist : 1.10;
+                ctx.globalCompositeOperation = 'soft-light';
+                ctx.fillStyle = `rgba(0,0,0,${(contrastAssist - 1).toFixed(3)})`; 
+                ctx.fillRect(0, 0, w, h);
+                ctx.globalCompositeOperation = 'source-over';
+            
+                // Eksekusi auto-download hasil akhir tunggal
+                simpanDanDownloadHasil(canvas);
+            } // <--- PENUTUP prosesPemadatanMataManusia YANG BENAR
 
-                const formatTerpilih = appMemory.defaultFormatFoto;
+            // SUB-FUNGSI 2: Penyimpanan data gambar
+            function simpanDanDownloadHasil(finalCanvas) {
+                const formatTerpilih = appMemory.defaultFormatFoto || 'webp_max';
                 let mimeType = 'image/webp';
                 let ekstensi = 'webp';
-
-                if (formatTerpilih === 'webp_max' || formatTerpilih === 'webp' || formatTerpilih === 'image/webp') {
-                    mimeType = 'image/webp'; ekstensi = 'webp';
-                } else if (formatTerpilih === 'jpeg_hr' || formatTerpilih === 'jpeg' || formatTerpilih === 'image/jpeg') {
-                    mimeType = 'image/jpeg'; ekstensi = 'jpg';
-                } else if (formatTerpilih === 'png' || formatTerpilih === 'image/png') {
+                let kualitas = 0.92;
+        
+                if (formatTerpilih === 'webp_max') {
+                    mimeType = 'image/webp'; ekstensi = 'webp'; kualitas = 1.0; 
+                } else if (formatTerpilih === 'jpeg_hr' || formatTerpilih === 'image/jpeg') {
+                    mimeType = 'image/jpeg'; ekstensi = 'jpg'; kualitas = 1.0;
+                } else if (formatTerpilih === 'png') {
                     mimeType = 'image/png'; ekstensi = 'png';
-                } else if (formatTerpilih === 'pdf' || formatTerpilih === 'image/pdf') {
-                    mimeType = 'image/jpeg'; ekstensi = 'pdf'; 
                 }
-
-                const base64Data = canvas.toDataURL(mimeType, (formatTerpilih === 'webp_max' ? 1.0 : 0.9));
-
+        
+                const base64Data = finalCanvas.toDataURL(mimeType, kualitas);
+        
+                if (!appMemory.cameraHistoryThumbs) appMemory.cameraHistoryThumbs = [];
                 appMemory.cameraHistoryThumbs.unshift(base64Data);
-                if(appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
-
-                document.getElementById('gallery_preview').style.backgroundImage = `url(${base64Data})`;
-
-                // AUTO DOWNLOAD
+                if (appMemory.cameraHistoryThumbs.length > 5) appMemory.cameraHistoryThumbs.pop();
+        
+                const galleryPreview = document.getElementById('gallery_preview');
+                if (galleryPreview) {
+                    galleryPreview.style.backgroundImage = `url(${base64Data})`;
+                    galleryPreview.style.backgroundSize = 'cover';
+                }
+        
                 const linkDownload = document.createElement('a');
                 linkDownload.href = base64Data;
                 
@@ -723,13 +879,15 @@
                 document.body.appendChild(linkDownload);
                 linkDownload.click();
                 document.body.removeChild(linkDownload);
-
+        
                 shutterBtn.disabled = false;
-                shutterBtn.innerText = "";
-            }, 50); 
-        }
+                shutterBtn.innerText = '';
+            }
+        } // <--- PENUTUP SEJATI FUNGSI UTAMA ambilFotoWebp
 
+        // ============================================================
         // 13. LOGIK BLUEPRINT PEREKAMAN VIDEO
+        // ============================================================
         function kontrolPerekamanVideo() {
             const shutterBtn = document.getElementById('shutter_btn');
             if (!appMemory.isVideoRecording) {
@@ -767,29 +925,29 @@
             }
         }
 
+        // ============================================================
         // 14. LOGIKA MENYALIN STRUKTUR ASLI KAMUS.JSON
+        // ============================================================
         function applySharpnessFilter(modeKey) {
             appMemory.activeSharpnessMode = modeKey;
         }
 
         function applyColorModeFilter(colorKey) {
             appMemory.activeColorMode = colorKey;
-            executeExposureStabilizer(); // Paksa kalkulasi ulang filter saat mode warna berganti
+            executeExposureStabilizer(); 
         }
 
         function applyExposure(val) {
-            // Slider manual menginterupsi stabilizer untuk sementara waktu
             const calculatedBrightness = 1 + (val * 0.1);
-            videoEl.style.filter = `brightness(${calculatedBrightness})`;
+            const videoEl = document.getElementById('camera-view');
+            if(videoEl) videoEl.style.filter = `brightness(${calculatedBrightness})`;
         }
 
-        // Pastikan state ini ada di memori aplikasi Anda
-        appMemory.activeAntiGlareMode = "normal"; // Opsi: "normal", "jendela", "kain"
+        appMemory.activeAntiGlareMode = "normal"; 
         
         function setAntiGlareMode(modeKey) {
             appMemory.activeAntiGlareMode = modeKey;
             
-            // Kembalikan filter ke setelan warna dasar terlebih dahulu
             const video = document.getElementById('camera-view');
             let baseFilter = "saturate(1.0) contrast(1.0)";
             if (appMemory.blueprint?.camera_features?.color_filters && appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode]) {
@@ -805,8 +963,9 @@
                 alert("🔄 Kamera kembali ke Mode Normal.");
             }
             
-            // Jalankan kalkulasi instan satu kali saat tombol ditekan
-            executeExposureStabilizer();
+            if (typeof executeExposureStabilizer === "function") {
+                executeExposureStabilizer();
+            }
         }
 
         // ============================================================
@@ -815,7 +974,7 @@
         function initAutoExposureLoop() {
             if (appMemory.exposureLoopInterval) clearInterval(appMemory.exposureLoopInterval);
             
-            let intervalTime = 200; // Sesuai analysis_interval_ms di kamus.json
+            let intervalTime = 200; 
             if (appMemory.blueprint?.auto_exposure_stabilizer?.analysis_interval_ms) {
                 intervalTime = appMemory.blueprint.auto_exposure_stabilizer.analysis_interval_ms;
             }
@@ -834,11 +993,9 @@
         
             if (video.videoWidth === 0 || video.videoHeight === 0) return;
             
-            // Ambil basis data stabilizer dari blueprint JSON
             const stabilizerCfg = appMemory.blueprint?.auto_exposure_stabilizer;
             if (!stabilizerCfg || !stabilizerCfg.enabled) return;
         
-            // JIKA MODE NORMAL: Gunakan logika auto-exposure bawaan kamus agar RAM 2GB tetap hemat
             if (appMemory.activeAntiGlareMode === "normal") {
                 aCtx.drawImage(video, 0, 0, 20, 20);
                 const imgData = aCtx.getImageData(0, 0, 20, 20);
@@ -849,7 +1006,7 @@
                 }
                 const avgLumi = totalLumi / (pixels.length / 4);
                 
-                let baseFilter = stabilizerCfg.conditions.outdoor_bright.adjust_filter; // default fallback
+                let baseFilter = stabilizerCfg.conditions.outdoor_bright.adjust_filter; 
                 if (avgLumi < stabilizerCfg.conditions.indoor_lowlight.trigger_luminance_below) {
                     baseFilter = stabilizerCfg.conditions.indoor_lowlight.adjust_filter;
                 } else if (avgLumi > stabilizerCfg.conditions.outdoor_bright.trigger_luminance_above) {
@@ -858,13 +1015,11 @@
                     baseFilter = "brightness(1.0) contrast(1.0) saturate(1.0)";
                 }
                 
-                // Gabungkan dengan filter warna aktif (misal: natural/asli)
                 let activeColor = appMemory.blueprint.camera_features.color_filters[appMemory.activeColorMode] || "";
                 video.style.filter = `${activeColor} ${baseFilter}`.trim();
                 return; 
             }
         
-            // JIKA MODE JENDELA / KAIN AKTIF: Mulai kompensasi semi-otomatis adaptif
             aCtx.drawImage(video, 0, 0, 20, 20);
             const imgData = aCtx.getImageData(0, 0, 20, 20);
             const pixels = imgData.data;
@@ -874,17 +1029,15 @@
         
             for (let i = 0; i < pixels.length; i += 4) {
                 const luminance = (0.299 * pixels[i]) + (0.587 * pixels[i+1]) + (0.114 * pixels[i+2]);
-                // Baca batas silau maksimal dari lamp_highlight di JSON (245) atau default 210
                 const whiteThreshold = stabilizerCfg.conditions.lamp_highlight?.max_white_threshold || 210;
                 if (luminance > whiteThreshold) {
                     overExposedCount++;
                 }
             }
         
-            const glareIntensity = overExposedCount / totalPixels; // Skala 0.0 - 1.0 seberapa luas luapan cahayanya
+            const glareIntensity = overExposedCount / totalPixels; 
             let dynamicFilter = "";
         
-            // Membaca basis perhitungan filter langsung dari data kondisi JSON yang sinkron
             if (appMemory.activeAntiGlareMode === "jendela") {
                 const cfg = stabilizerCfg.conditions.anti_glare_jendela;
                 let autoBrightness = cfg.base_brightness - (glareIntensity * cfg.max_dim_offset);
