@@ -27,7 +27,7 @@
       "fokus_warna": "saturate(1.8) contrast(1.1)",
       "natural": "saturate(1.1) contrast(0.95)",
       "malam": "saturate(1.2) contrast(1.3) brightness(1.6)",
-      "teks": "saturate(0.0) contrast(1.8) brightness(0.9)"
+      "teks": "saturate(1.05) contrast(1.12) brightness(1.02)"
     }
   },
 
@@ -69,6 +69,89 @@
         "max_contrast_offset": 0.10,
         "saturate": 1.02
       }
+    }
+  },
+
+  "human_eye_perception_formula": {
+    "enabled": true,
+    "desc": "Algoritma Pemadatan RGB & Kompresi Logaritmik Sensor berbasis Biologis Mata Manusia",
+    "luminance_weights_cie1931": {
+      "r": 0.2126,
+      "g": 0.7152,
+      "b": 0.0722
+    },
+    "tone_mapping": {
+      "algorithm": "reinhard_modified",
+      "trigger_glare_above": 190,
+      "glare_dim_factor": 0.92,
+      "max_clipping_safety": 245
+    },
+    "gamma_correction": {
+      "curve_exponent": 2.2
+    }
+  },
+
+  "human_eye_perception_formula": {
+    "enabled": true,
+    "desc": "Algoritma Pemadatan RGB & Kompresi Logaritmik Sensor berbasis Biologis Mata Manusia",
+    "luminance_weights_cie1931": { "r": 0.2126, "g": 0.7152, "b": 0.0722 },
+    "tone_mapping": {
+      "algorithm": "reinhard_modified",
+      "trigger_glare_above": 190,
+      "glare_dim_factor": 0.92,
+      "max_clipping_safety": 245
+    },
+    "gamma_correction": { "curve_exponent": 2.2 },
+    
+    "squint_reflex_mechanism": {
+      "enabled": true,
+      "trigger_total_glare_pct": 0.15,
+      "squint_aperture_ratio_y": 0.75,
+      "center_sharpness_boost": 1.25,
+      "vignette_shadow_alpha": 0.25
+    }
+  },
+
+  "telescope_zoom_formula": {
+    "enabled": true,
+    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
+    "trigger_zoom_above": 2.0,
+    "subpixel_interpolation": {
+      "enhance_multiplier": 1.45,
+      "noise_suppression_weight": 0.15
+    },
+    "lens_distortion_emulation": {
+      "spherical_curvature": 0.03,
+      "center_focus_radius_pct": 0.40
+    },
+    "laplacian_edge_booster": {
+      "matrix_kernel": [
+        [0, -1, 0],
+        [-1, 4, -1],
+        [0, -1, 0]
+      ],
+      "boost_factor": 1.35
+    }
+  },
+
+  "telescope_zoom_formula": {
+    "enabled": true,
+    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
+    "trigger_zoom_above": 2.0,
+    "subpixel_interpolation": {
+      "enhance_multiplier": 1.45,
+      "noise_suppression_weight": 0.15
+    },
+    "laplacian_edge_booster": {
+      "matrix_kernel": [[0, -1, 0], [-1, 4, -1], [0, -1, 0]],
+      "boost_factor": 1.35
+    },
+    
+    "tunnel_vision_isolation": {
+      "enabled": true,
+      "peripheral_light_suppression": 0.40,
+      "tunnel_smoothness_gradient": 0.25,
+      "fovea_focus_radius_pct": 0.35
     }
   },
 
@@ -170,7 +253,7 @@
       "type": "direct_menu",
       "items": [
         {"id": "mode_malam", "label": "🌙 Mode: Malam", "action": "setColorMode", "value": "malam"},
-        {"id": "mode_teks", "label": "📄 Mode: Fokus Teks", "action": "setColorMode", "value": "teks"},
+        {"id": "mode_teks", "label": "📄 Mode: Fokus Serat & Teks", "action": "setColorMode", "value": "teks"},
         {"id": "mode_silau_jendela", "label": "🪟 Redam Silau Jendela", "action": "setAntiGlare", "value": "jendela"},
         {"id": "mode_silau_kain", "label": "👕 Redam Silau Kain", "action": "setAntiGlare", "value": "kain"},
         {"id": "mode_normal_silau", "label": "📷 Kembalikan Mode Normal", "action": "setAntiGlare", "value": "normal"},
