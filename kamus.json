@@ -155,6 +155,24 @@
     }
   },
 
+  "telescope_zoom_formula": {
+    "enabled": true,
+    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
+    "trigger_zoom_above": 2.0,
+    "subpixel_interpolation": { "enhance_multiplier": 1.45, "noise_suppression_weight": 0.15 },
+    "laplacian_edge_booster": { "boost_factor": 1.35 },
+    "tunnel_vision_isolation": { "enabled": true, "peripheral_light_suppression": 0.40, "tunnel_smoothness_gradient": 0.25, "fovea_focus_radius_pct": 0.35 },
+    
+    "convex_lens_emulation": {
+      "inverse_curvature": 0.05,
+      "edge_sharpness_weight": 1.20
+    },
+    "window_penetration": {
+      "glare_reflection_cut": 200,
+      "shadow_detail_boost": 1.30
+    }
+  },
+
   "navigation_buttons": {
     "left_bottom": { 
       "id": "gallery_preview", 
