@@ -173,6 +173,30 @@
     }
   },
 
+  "telescope_zoom_formula": {
+    "enabled": true,
+    "desc": "Algoritma Super-Resolution Lensa Meniskus Virtual (Cekung-Cembung)",
+    "trigger_zoom_above": 2.0,
+    
+    "front_concave_lens": {
+      "layers": 3,
+      "base_curvature": -0.06,
+      "thickness_per_layer": 0.12,
+      "glare_dispersion_factor": 0.85
+    },
+    
+    "back_convex_lens": {
+      "layers": 2,
+      "base_curvature": 0.08,
+      "thickness_per_layer": 0.15,
+      "center_focus_booster": 1.40
+    },
+
+    "laplacian_edge_booster": { "boost_factor": 1.35 },
+    "tunnel_vision_isolation": { "enabled": true, "peripheral_light_suppression": 0.40, "tunnel_smoothness_gradient": 0.25, "fovea_focus_radius_pct": 0.35 },
+    "window_penetration": { "glare_reflection_cut": 200, "shadow_detail_boost": 1.30 }
+  },
+
   "navigation_buttons": {
     "left_bottom": { 
       "id": "gallery_preview", 
