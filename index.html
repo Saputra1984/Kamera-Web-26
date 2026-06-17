@@ -704,26 +704,54 @@
                 const isTelescopeActive = currentZoomLevel > teleCfg.trigger_zoom_above;
             
                 // LOOPING INTI PER PIKSEL (HANYA BOLEH ADA 1 LOOP UTAMA)
-                for (let i = 0; i < f1.length; i += 4) {
-                    // Rata-rata dasar 3 frame kilat
-                    let rPadat = (f1[i]   + f2[i]   + f3[i])   / 3;
-                    let gPadat = (f1[i+1] + f2[i+1] + f3[i+1]) / 3;
-                    let bPadat = (f1[i+2] + f2[i+2] + f3[i+2]) / 3;
-            
-                    // TAHAP A: JALANKAN RUMUS TEROPONG (Jika sedang Zoom Jauh)
-                    if (isTelescopeActive) {
-                        const teleMultiplier = teleCfg.subpixel_interpolation.enhance_multiplier;
-                        const boostEdge = teleCfg.laplacian_edge_booster.boost_factor;
-            
-                        let diffR = (f1[i]   - rPadat) * boostEdge;
-                        let diffG = (f1[i+1] - gPadat) * boostEdge;
-                        let diffB = (f1[i+2] - bPadat) * boostEdge;
-            
-                        rPadat = rPadat + (diffR * teleMultiplier * (currentZoomLevel * 0.25));
-                        gPadat = gPadat + (diffG * teleMultiplier * (currentZoomLevel * 0.25));
-                        bPadat = bPadat + (diffB * teleMultiplier * (currentZoomLevel * 0.25));
-                    }
-            
+        for (let i = 0; i < f1.length; i += 4) {
+            // Rata-rata dasar 3 frame kilat
+            let rPadat = (f1[i]   + f2[i]   + f3[i])   / 3;
+            let gPadat = (f1[i+1] + f2[i+1] + f3[i+1]) / 3;
+            let bPadat = (f1[i+2] + f2[i+2] + f3[i+2]) / 3;
+
+            // 1. LOGIKA UTAMA: JALANKAN RUMUS TEROPONG + BOOSTER CEMBUNG MERATA
+            if (isTelescopeActive) {
+                const teleMultiplier = teleCfg.subpixel_interpolation.enhance_multiplier;
+                const boostEdge = teleCfg.laplacian_edge_booster.boost_factor;
+
+                // Ambil parameter cembung virtual dari JSON
+                const convCfg = teleCfg.convex_lens_emulation || { "inverse_curvature": 0.05, "edge_sharpness_weight": 1.20 };
+                
+                // Hitung posisi piksel saat ini terhadap titik tengah (X, Y)
+                const totalPiksel = f1.length / 4;
+                const idxPiksel = i / 4;
+                const pxX = idxPiksel % w;
+                const pxY = Math.floor(idxPiksel / w);
+                const distKeTengah = Math.sqrt(Math.pow(pxX - w/2, 2) + Math.pow(pxY - h/2, 2)) / Math.sqrt(Math.pow(w/2, 2) + Math.pow(h/2, 2));
+
+                // Efek Kebalikan Mata: Makin ke pinggir (distKeTengah besar), ketajaman dipaksa naik menggunakan edge_sharpness_weight
+                const faktorBoosterPinggir = 1 + (distKeTengah * (convCfg.edge_sharpness_weight - 1));
+
+                let diffR = (f1[i]   - rPadat) * boostEdge * faktorBoosterPinggir;
+                let diffG = (f1[i+1] - gPadat) * boostEdge * faktorBoosterPinggir;
+                let diffB = (f1[i+2] - bPadat) * boostEdge * faktorBoosterPinggir;
+
+                rPadat = rPadat + (diffR * teleMultiplier * (currentZoomLevel * 0.25));
+                gPadat = gPadat + (diffG * teleMultiplier * (currentZoomLevel * 0.25));
+                bPadat = bPadat + (diffB * teleMultiplier * (currentZoomLevel * 0.25));
+
+                // 2. LOGIKA KEDUA: TEMBUS JENDELA (MENEMBUS REFLEKSI KACA)
+                const winCfg = teleCfg.window_penetration || { "glare_reflection_cut": 200, "shadow_detail_boost": 1.30 };
+                
+                // Jika piksel terlalu putih kebiruan (indikasi pantulan langit di kaca)
+                if (rPadat > winCfg.glare_reflection_cut && bPadat > winCfg.glare_reflection_cut) {
+                    // Redam pantulan kaca agar objek gelap di dalam ruangan/balik jendela naik ke permukaan
+                    rPadat *= 0.85; 
+                    gPadat *= 0.88;
+                } else {
+                    // Angkat detail bayangan di balik jendela (Shadow Detail Boost)
+                    rPadat = Math.min(255, rPadat * winCfg.shadow_detail_boost);
+                    gPadat = Math.min(255, gPadat * winCfg.shadow_detail_boost);
+                    bPadat = Math.min(255, bPadat * winCfg.shadow_detail_boost);
+                }
+            }
+
                     // TAHAP B: NORMALISASI DAN TONE MAPPING MATA MANUSIA
                     let rNorm = rPadat / 255;
                     let gNorm = gPadat / 255;
