@@ -179,7 +179,7 @@
     "trigger_zoom_above": 2.0,
     
     "front_concave_lens": {
-      "layers": 5,
+      "layers": 10,
       "base_curvature": -0.06,
       "thickness_per_layer": 0.12,
       "glare_dispersion_factor": 0.85
