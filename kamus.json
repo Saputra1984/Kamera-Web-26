@@ -180,14 +180,14 @@
     
     "front_concave_lens": {
       "layers": 10,
-      "base_curvature": -0.5,
+      "base_curvature": -1.5,
       "thickness_per_layer": 0.12,
       "glare_dispersion_factor": 0.85
     },
     
     "back_convex_lens": {
       "layers": 3,
-      "base_curvature": 0.1,
+      "base_curvature": 0.5,
       "thickness_per_layer": 0.15,
       "center_focus_booster": 1.40
     },
