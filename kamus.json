@@ -197,6 +197,7 @@
     "window_penetration": { "glare_reflection_cut": 200, "shadow_detail_boost": 1.30 }
   },
 
+
   "navigation_buttons": {
     "left_bottom": { 
       "id": "gallery_preview", 
