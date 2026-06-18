@@ -88,21 +88,7 @@
     },
     "gamma_correction": {
       "curve_exponent": 2.2
-    }
-  },
-
-  "human_eye_perception_formula": {
-    "enabled": true,
-    "desc": "Algoritma Pemadatan RGB & Kompresi Logaritmik Sensor berbasis Biologis Mata Manusia",
-    "luminance_weights_cie1931": { "r": 0.2126, "g": 0.7152, "b": 0.0722 },
-    "tone_mapping": {
-      "algorithm": "reinhard_modified",
-      "trigger_glare_above": 190,
-      "glare_dim_factor": 0.92,
-      "max_clipping_safety": 245
     },
-    "gamma_correction": { "curve_exponent": 2.2 },
-    
     "squint_reflex_mechanism": {
       "enabled": true,
       "trigger_total_glare_pct": 0.15,
@@ -114,89 +100,39 @@
 
   "telescope_zoom_formula": {
     "enabled": true,
-    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
+    "desc": "Algoritma Super-Resolution Lensa Meniskus Virtual (Cekung-Cembung)",
     "trigger_zoom_above": 2.0,
-    "subpixel_interpolation": {
-      "enhance_multiplier": 1.45,
-      "noise_suppression_weight": 0.15
+    "subpixel_interpolation": { 
+      "enhance_multiplier": 1.45, 
+      "noise_suppression_weight": 0.15 
     },
-    "lens_distortion_emulation": {
-      "spherical_curvature": 0.03,
-      "center_focus_radius_pct": 0.40
-    },
-    "laplacian_edge_booster": {
-      "matrix_kernel": [
-        [0, -1, 0],
-        [-1, 4, -1],
-        [0, -1, 0]
-      ],
-      "boost_factor": 1.35
-    }
-  },
-
-  "telescope_zoom_formula": {
-    "enabled": true,
-    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
-    "trigger_zoom_above": 2.0,
-    "subpixel_interpolation": {
-      "enhance_multiplier": 1.45,
-      "noise_suppression_weight": 0.15
-    },
-    "laplacian_edge_booster": {
+    "laplacian_edge_booster": { 
       "matrix_kernel": [[0, -1, 0], [-1, 4, -1], [0, -1, 0]],
-      "boost_factor": 1.35
+      "boost_factor": 1.35 
     },
-    
+    "front_concave_lens": {
+      "layers": 3,
+      "base_curvature": -0.06,
+      "thickness_per_layer": 0.12,
+      "glare_dispersion_factor": 0.85
+    },
+    "back_convex_lens": {
+      "layers": 2,
+      "base_curvature": 0.08,
+      "thickness_per_layer": 0.15,
+      "center_focus_booster": 1.40
+    },
     "tunnel_vision_isolation": {
       "enabled": true,
       "peripheral_light_suppression": 0.40,
       "tunnel_smoothness_gradient": 0.25,
       "fovea_focus_radius_pct": 0.35
-    }
-  },
-
-  "telescope_zoom_formula": {
-    "enabled": true,
-    "desc": "Algoritma Super-Resolution & Refraksi Lensa Teropong Digital untuk Zoom Jarak Jauh",
-    "trigger_zoom_above": 2.0,
-    "subpixel_interpolation": { "enhance_multiplier": 1.45, "noise_suppression_weight": 0.15 },
-    "laplacian_edge_booster": { "boost_factor": 1.35 },
-    "tunnel_vision_isolation": { "enabled": true, "peripheral_light_suppression": 0.40, "tunnel_smoothness_gradient": 0.25, "fovea_focus_radius_pct": 0.35 },
-    
-    "convex_lens_emulation": {
-      "inverse_curvature": 0.05,
-      "edge_sharpness_weight": 1.20
     },
     "window_penetration": {
       "glare_reflection_cut": 200,
       "shadow_detail_boost": 1.30
     }
   },
-
-  "telescope_zoom_formula": {
-    "enabled": true,
-    "desc": "Algoritma Super-Resolution Lensa Meniskus Virtual (Cekung-Cembung)",
-    "trigger_zoom_above": 2.0,
-    
-    "front_concave_lens": {
-      "layers": 10,
-      "base_curvature": -0.5,
-      "thickness_per_layer": 0.12,
-      "glare_dispersion_factor": 0.85
-    },
-    
-    "back_convex_lens": {
-      "layers": 3,
-      "base_curvature": 2.5,
-      "thickness_per_layer": 0.15,
-      "center_focus_booster": 1.40
-    },
-
-    "laplacian_edge_booster": { "boost_factor": 1.35 },
-    "tunnel_vision_isolation": { "enabled": true, "peripheral_light_suppression": 0.40, "tunnel_smoothness_gradient": 0.25, "fovea_focus_radius_pct": 0.35 },
-    "window_penetration": { "glare_reflection_cut": 200, "shadow_detail_boost": 1.30 }
-  },
-
 
   "navigation_buttons": {
     "left_bottom": { 
