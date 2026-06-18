@@ -863,18 +863,21 @@
                     const cx = w / 2;
                     const cy = h / 2;
                     const maxRadius = Math.sqrt(cx*cx + cy*cy);
+                    
+                    // Membuat radius fovea lebih luas agar bulatan tengah tidak terlihat kaku
                     const innerRadius = maxRadius * tunnelIso.fovea_focus_radius_pct;
             
-                    const topengTeropong = ctx.createRadialGradient(cx, cy, innerRadius, cx, cy, maxRadius);
+                    const topengTeropong = ctx.createRadialGradient(cx, cy, innerRadius * 0.2, cx, cy, maxRadius);
                     topengTeropong.addColorStop(0, 'rgba(0,0,0,0)');
-                    topengTeropong.addColorStop(tunnelIso.tunnel_smoothness_gradient, 'rgba(0,0,0,0.05)');
+                    // Transisi linear yang sangat panjang agar menyatu dengan layar
+                    topengTeropong.addColorStop(tunnelIso.tunnel_smoothness_gradient, 'rgba(0,0,0,0.02)');
                     topengTeropong.addColorStop(1, `rgba(0, 0, 0, ${tunnelIso.peripheral_light_suppression})`);
             
                     ctx.globalCompositeOperation = 'source-over';
                     ctx.fillStyle = topengTeropong;
                     ctx.fillRect(0, 0, w, h);
                 }
-            
+
                 // 3. SENTUHAN AKHIR: Efek bayangan mikro 2.5D kontras asisten
                 const contrastAssist = cfgSharp ? cfgSharp.contrast_assist : 1.10;
                 ctx.globalCompositeOperation = 'soft-light';
