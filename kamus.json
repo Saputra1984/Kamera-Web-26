@@ -102,35 +102,31 @@
     "enabled": true,
     "desc": "Algoritma Super-Resolution Lensa Meniskus Virtual (Cekung-Cembung)",
     "trigger_zoom_above": 2.0,
-    "subpixel_interpolation": { 
-      "enhance_multiplier": 1.45, 
-      "noise_suppression_weight": 0.15 
-    },
-    "laplacian_edge_booster": { 
-      "matrix_kernel": [[0, -1, 0], [-1, 4, -1], [0, -1, 0]],
-      "boost_factor": 1.35 
-    },
+    "subpixel_interpolation": { "enhance_multiplier": 1.45, "noise_suppression_weight": 0.15 },
+    "laplacian_edge_booster": { "boost_factor": 1.35 },
+    
     "front_concave_lens": {
       "layers": 3,
-      "base_curvature": -0.06,
-      "thickness_per_layer": 0.12,
-      "glare_dispersion_factor": 0.85
+      "base_curvature": -0.04,
+      "thickness_per_layer": 0.10,
+      "glare_dispersion_factor": 0.70
     },
     "back_convex_lens": {
       "layers": 2,
-      "base_curvature": 0.08,
-      "thickness_per_layer": 0.15,
-      "center_focus_booster": 1.40
+      "base_curvature": 0.05,
+      "thickness_per_layer": 0.12,
+      "center_focus_booster": 1.15
     },
+    
     "tunnel_vision_isolation": {
       "enabled": true,
-      "peripheral_light_suppression": 0.40,
-      "tunnel_smoothness_gradient": 0.25,
-      "fovea_focus_radius_pct": 0.35
+      "peripheral_light_suppression": 0.20,
+      "tunnel_smoothness_gradient": 0.75,
+      "fovea_focus_radius_pct": 0.65
     },
     "window_penetration": {
-      "glare_reflection_cut": 200,
-      "shadow_detail_boost": 1.30
+      "glare_reflection_cut": 170,
+      "shadow_detail_boost": 1.45
     }
   },
 
