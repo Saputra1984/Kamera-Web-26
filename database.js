@@ -1,15 +1,20 @@
-{
-  "app_metadata": {
-    "application_name": "Ai Picture",
-    "version": "1.0.0",
-    "device_target": "Xiaomi 2GB RAM",
-    "stability_mode": "hardware_assisted"
-  },
-  
-  "settings": {
-    "default_format": "webp_max",
-    "default_sharpness": "max",
-    "default_color_mode": "natural"
+// database.js - Pusat Data dan Cetak Biru (Blueprint) Aplikasi "Ai Picture"
+window.APP_DATABASE = {
+  "app_config": {
+    "metadata": { 
+      "application_name": "Ai Picture", 
+      "version": "1.0.0" 
+    },
+    "settings": { 
+      "default_format": "webp_max", 
+      "default_sharpness": "max", 
+      "default_color_mode": "natural",
+      "default_facing": "environment", 
+      "aspect_ratio": "4:3", 
+      "stability_mode": "hardware_assisted",
+      "theme": "dark_void",
+      "background_color": "#000000"
+    }
   },
 
   "sharpness_modes": {
@@ -75,20 +80,14 @@
   "human_eye_perception_formula": {
     "enabled": true,
     "desc": "Algoritma Pemadatan RGB & Kompresi Logaritmik Sensor berbasis Biologis Mata Manusia",
-    "luminance_weights_cie1931": {
-      "r": 0.2126,
-      "g": 0.7152,
-      "b": 0.0722
-    },
+    "luminance_weights_cie1931": { "r": 0.2126, "g": 0.7152, "b": 0.0722 },
     "tone_mapping": {
       "algorithm": "reinhard_modified",
       "trigger_glare_above": 190,
       "glare_dim_factor": 0.92,
       "max_clipping_safety": 245
     },
-    "gamma_correction": {
-      "curve_exponent": 2.2
-    },
+    "gamma_correction": { "curve_exponent": 2.2 },
     "squint_reflex_mechanism": {
       "enabled": true,
       "trigger_total_glare_pct": 0.15,
@@ -98,94 +97,112 @@
     }
   },
 
-  "telescope_zoom_formula": {
+  // SLOT LOGIKA BARU: Menggantikan fungsi Teropong Lama
+  "ai_vision_core": {
     "enabled": true,
-    "desc": "Algoritma Super-Resolution Lensa Meniskus Virtual (Cekung-Cembung)",
-    "trigger_zoom_above": 2.0,
-    "subpixel_interpolation": { "enhance_multiplier": 1.45, "noise_suppression_weight": 0.15 },
-    "laplacian_edge_booster": { "boost_factor": 1.35 },
-    
-    "front_concave_lens": {
-      "layers": 3,
-      "base_curvature": -0.04,
-      "thickness_per_layer": 0.10,
-      "glare_dispersion_factor": 0.70
-    },
-    "back_convex_lens": {
-      "layers": 2,
-      "base_curvature": 0.05,
-      "thickness_per_layer": 0.12,
-      "center_focus_booster": 1.15
-    },
-    
-    "tunnel_vision_isolation": {
-      "enabled": true,
-      "peripheral_light_suppression": 0.20,
-      "tunnel_smoothness_gradient": 0.75,
-      "fovea_focus_radius_pct": 0.65
-    },
-    "window_penetration": {
-      "glare_reflection_cut": 170,
-      "shadow_detail_boost": 1.45
-    }
+    "mode": "hdr_biological_super_res",
+    "local_contrast_strength": 1.35,  // Menaikkan ketajaman objek jauh (jendela/gedung)
+    "glare_cut_threshold": 225,        // Batas deteksi cahaya silau jendela
+    "shadow_lift_factor": 1.20,       // Mengangkat detail area gelap (dalam ruangan)
+    "edge_boost_kernel": [
+       0, -1,  0,
+      -1,  5, -1,
+       0, -1,  0
+    ]
   },
 
   "navigation_buttons": {
-    "left_bottom": { 
+    "gallery_preview": { 
       "id": "gallery_preview", 
       "type": "preview", 
       "action": "openGallery",
-      "ui_coordinate": { "position": "absolute", "bottom": "20px", "left": "20px", "z_index": 15, "width_px": 55, "height_px": 55 }
+      "label": "",
+      "ui_coordinate": { "position": "absolute", "bottom": "20px", "left": "20px", "z_index": "15", "width": "55px", "height": "55px", "background": "#222222", "border-radius": "8px" },
+      "transition": "transform 0.3s ease"
     },
-    "center_bottom": { 
+    "shutter_btn": { 
       "id": "shutter_btn", 
       "type": "trigger", 
       "action": "capture",
-      "ui_coordinate": { "position": "absolute", "bottom": "15px", "left": "50%", "transform": "translateX(-50%)", "z_index": 15, "width_px": 68, "height_px": 68 }
+      "label": "",
+      "ui_coordinate": { "position": "absolute", "bottom": "15px", "left": "50%", "transform": "translateX(-50%)", "z_index": "15", "width": "68px", "height": "68px", "background": "#ffffff", "border-radius": "50%" },
+      "transition": "transform 0.3s ease"
     },
-    "right_bottom_group": {
-      "container_id": "right_actions_container",
-      "ui_coordinate": { "position": "absolute", "bottom": "15px", "right": "20px", "z_index": 15, "display": "flex", "flex_direction": "column", "gap_px": 10 },
-      "buttons": [
-        { "id": "switch_camera", "type": "toggle", "action": "switchCamera", "label": "🔄", "width_px": 45, "height_px": 45 },
-        { "id": "switch_mode", "type": "toggle", "action": "switchMode", "label": "📸/📹", "width_px": 45, "height_px": 45 }
+    "right_actions_container": {
+      "id": "right_actions_container",
+      "type": "container",
+      "ui_coordinate": { "position": "absolute", "bottom": "15px", "right": "20px", "z_index": "15", "display": "flex", "flex-direction": "column", "gap": "10px" },
+      "child_buttons": [
+        { "id": "switch_camera", "type": "toggle", "action": "switchCamera", "label": "🔄", "width": "45px", "height": "45px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%", "transition": "transform 0.3s ease" },
+        { "id": "switch_mode", "type": "toggle", "action": "switchMode", "label": "📸", "width": "45px", "height": "45px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%", "transition": "transform 0.3s ease" }
       ]
     },
-    "left_mid_controls": {
-      "timer_button": {
-        "id": "timer_btn",
-        "type": "trigger",
-        "action": "cycleTimer",
-        "label": "⏱️",
-        "ui_coordinate": { "position": "absolute", "top": "30%", "left": "20px", "z_index": 10, "width_px": 45, "height_px": 45 }
-      },
-      "brightness_slider": {
-        "id": "expSlider",
-        "type": "slider",
-        "action": "setExposure",
-        "min": -3,
-        "max": 3,
-        "step": 0.5,
-        "ui_coordinate": { "position": "absolute", "top": "55%", "left": "20px", "z_index": 10, "transform": "rotate(-90deg)", "transform_origin": "left center", "width_px": 150 }
+    "timer_btn": {
+      "id": "timer_btn",
+      "type": "trigger",
+      "action": "cycleTimer",
+      "label": "⏱️",
+      // Dipindahkan sedikit lebih ke atas (top: 20%) agar tidak tertekan oleh slider
+      "ui_coordinate": { 
+        "position": "absolute", 
+        "top": "20%", 
+        "left": "25px", 
+        "z_index": "10", 
+        "width": "45px", 
+        "height": "45px", 
+        "background": "rgba(255,255,255,0.2)", 
+        "color": "#fff", 
+        "border-radius": "50%" 
       }
     },
-    "top_bar_controls": {
-      "menu_button": {
-        "id": "triple_dot_btn",
-        "type": "trigger",
-        "action": "toggleMenuBox",
-        "label": "⋮",
-        "ui_coordinate": { "position": "absolute", "top": "15px", "right": "15px", "z_index": 10, "font_size_px": 28 }
-      },
-      "dropdown_box": {
-        "id": "dropdownMenu",
-        "ui_coordinate": { "position": "absolute", "top": "60px", "right": "15px", "z_index": 20, "max_height": "50vh", "overflow_y": "auto" }
+    "expSlider": {
+      "id": "expSlider",
+      "type": "slider",
+      "action": "setExposure",
+      "min": -3,
+      "max": 3,
+      "step": 0.5,
+      // Menggunakan posisi tengah kiri (top: 50%) dengan transform-origin yang pas
+      // Nilai 'display: block' diaktifkan agar slider muncul dan bisa Anda geser langsung
+      "ui_coordinate": { 
+        "position": "absolute", 
+        "top": "50%", 
+        "left": "25px", 
+        "z_index": "10", 
+        "transform": "rotate(-90deg) translateX(-50%)", 
+        "transform-origin": "left center", 
+        "width": "160px", 
+        "display": "block",
+        "margin": "0"
       }
     },
-    "global_viewfinder": {
-      "id": "camera-view",
-      "ui_coordinate": { "position": "absolute", "top": 0, "left": 0, "width": "100%", "height": "100%", "z_index": 1, "object_fit": "cover" },
-      "interaction": { "on_click": "close_menu_and_trigger_focus", "on_pinch": "extreme_digital_zoom" }
+
+    "triple_dot_btn": {
+      "id": "triple_dot_btn",
+      "type": "trigger",
+      "action": "toggleMenuBox",
+      "label": "⋮",
+      "ui_coordinate": { "position": "absolute", "top": "15px", "right": "15px", "z_index": "10", "font-size": "28px", "background": "transparent", "color": "#ffffff" },
+      "transition": "transform 0.3s ease"
+    },
+    "dropdownMenu": {
+      "id": "dropdownMenu",
+      "type": "menu_box",
+      "ui_coordinate": { 
+        "position": "absolute", 
+        "top": "60px", 
+        "right": "15px", 
+        "z_index": "20", 
+        "width": "220px",
+        "max-height": "60vh", 
+        "overflow-y": "auto", 
+        "display": "none", 
+        "background": "rgba(10,10,10,0.95)", 
+        "border": "1px solid #222",
+        "border-radius": "8px", 
+        "padding": "12px",
+        "flex-direction": "column"
+      }
     }
   },
 
@@ -254,4 +271,4 @@
       "css_override": "previewImg.style.transform = 'translate(0px, 0px) scale(1)'; previewImg.style.transition = 'none';"
     }
   }
-}
+};
