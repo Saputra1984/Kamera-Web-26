@@ -92,7 +92,7 @@ window.APP_DATABASE = {
       "enabled": true,
       "trigger_total_glare_pct": 0.15,
       "squint_aperture_ratio_y": 0.75,
-      "center_sharpness_boost": 1.1,
+      "center_sharpness_boost": 0.25,
       "vignette_shadow_alpha": 0.0
     }
   },
