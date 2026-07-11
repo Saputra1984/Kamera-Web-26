@@ -91,8 +91,8 @@ window.APP_DATABASE = {
     "squint_reflex_mechanism": {
       "enabled": true,
       "trigger_total_glare_pct": 0.15,
-      "squint_aperture_ratio_y": 0.75,
-      "center_sharpness_boost": 0.005,
+      "squint_aperture_ratio_y": 1.0,
+      "center_sharpness_boost": 1.0,
       "vignette_shadow_alpha": 0.0
     }
   },
