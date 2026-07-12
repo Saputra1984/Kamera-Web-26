@@ -581,17 +581,49 @@ function renderDropdownMenuItems() {
 }
 
 function simpanDanDownloadHasil(canvas) {
-    const link = document.createElement('a');
-    link.download = `Ai_Picture_${Date.now()}.webp`;
-    link.href = canvas.toDataURL ? canvas.toDataURL('image/webp', 0.95) : canvas.toDataURL('image/jpeg', 0.9);
-    link.click();
+    if (!canvas) return;
 
+    // 1. Ambil format kualitas sesuai database atau fallback aman
+    const quality = appMemory.formatFoto === 'webp_max' ? 1.0 : 0.95;
+    const mimeType = appMemory.formatFoto && appMemory.formatFoto.includes('webp') ? 'image/webp' : 'image/jpeg';
+    const ext = mimeType.split('/')[1];
+
+    // 2. Ekstrak string gambar (Base64)
+    const base64Data = canvas.toDataURL(mimeType, quality);
+
+    // 3. Amankan dan Download File Fisik ke Android
+    const link = document.createElement('a');
+    link.download = `Ai_Picture_${Date.now()}.${ext}`;
+    link.href = base64Data;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link); // Bersihkan sisa elemen dari DOM
+
+    // 4. SINKRONISASI KE GALERI INTERNAL
+    if (typeof saveToHistory === 'function') {
+        saveToHistory(base64Data);
+    }
+
+    // 5. SINKRONISASI LANGSUNG KE TOMBOL BULAT KIRI BAWAH
+    const previewEl = document.getElementById('gallery_preview');
+    if (previewEl) {
+        previewEl.style.backgroundImage = `url(${base64Data})`;
+        previewEl.style.backgroundSize = "cover";
+        previewEl.style.backgroundPosition = "center";
+        previewEl.innerText = ""; // Hilangkan ikon emoji bawaan
+    }
+
+    // 6. Normalkan kembali status tombol jepret
     const shutterBtn = document.getElementById('shutter_btn');
     if (shutterBtn) {
         shutterBtn.style.pointerEvents = "auto";
-        shutterBtn.innerText = "";
+        shutterBtn.style.opacity = "1";
+        shutterBtn.innerText = ""; 
     }
-    applyBlueprintUI(); 
+    
+    if (typeof applyBlueprintUI === "function") {
+        applyBlueprintUI(); 
+    }
 }
 
 function kontrolPerekamanVideo() {
@@ -1019,5 +1051,19 @@ function initGallery() {
     if (saved) {
         appMemory.gallery = JSON.parse(saved);
         renderGalleryThumbnails();
+        
+        // SINKRONISASI AWAL: Ambil gambar terakhir yang ada di memori untuk dipasang di kiri bawah
+        if (appMemory.gallery.display && appMemory.gallery.display.length > 0) {
+            const previewEl = document.getElementById('gallery_preview');
+            if (previewEl) {
+                previewEl.style.backgroundImage = `url(${appMemory.gallery.display[0]})`;
+                previewEl.style.backgroundSize = "cover";
+                previewEl.style.backgroundPosition = "center";
+                previewEl.innerText = "";
+            }
+        }
+    } else {
+        // Jika memori kosong, buat struktur folder default agar tidak error undefined
+        appMemory.gallery = { display: [], archive: [] };
     }
 }
