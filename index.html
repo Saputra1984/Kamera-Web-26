@@ -37,6 +37,7 @@
             justify-content: center;
             border: none;
             outline: none;
+            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh di Android WebView */
         }
         
         /* Canvas untuk pemrosesan AI di balik layar */
@@ -46,19 +47,54 @@
 <body>
     <video id="camera-view" autoplay playsinline></video>
 
-    <div id="gallery_preview" class="ui-element"></div>
-    <div id="shutter_btn" class="ui-element"></div>
+    <!-- Komponen Tombol Fisik Antarmuka -->
+    <button id="gallery_preview" class="ui-element"></button>
+    <button id="shutter_btn" class="ui-element"></button>
     
     <div id="right_actions_container" class="ui-element"></div>
     
-    <div id="timer_btn" class="ui-element"></div>
+    <button id="timer_btn" class="ui-element"></button>
     <input type="range" id="expSlider" class="ui-element">
-    <div id="triple_dot_btn" class="ui-element"></div>
+    <button id="triple_dot_btn" class="ui-element"></button>
     <div id="dropdownMenu"></div>
 
     <canvas id="processing-canvas"></canvas>
 
+    <!-- Memuat Basis Data Terlebih Dahulu -->
     <script src="database.js"></script>
+
+    <!-- Fungsi Jembatan untuk Menembakkan Blueprint UI ke Elemen Fisik HTML -->
+    <script>
+        function applyBlueprintUI() {
+            if (!window.APP_DATABASE || !window.APP_DATABASE.navigation_buttons) return;
+            const buttons = window.APP_DATABASE.navigation_buttons;
+
+            for (const key in buttons) {
+                const config = buttons[key];
+                const el = document.getElementById(config.id);
+                
+                if (el && config.ui_coordinate) {
+                    // Terapkan seluruh aturan style CSS yang tersimpan di database.js secara dinamis
+                    for (const styleProp in config.ui_coordinate) {
+                        el.style[styleProp] = config.ui_coordinate[styleProp];
+                    }
+                    // Berikan label teks/ikon (seperti 🖼️, ⏱️, ⋮) jika ada
+                    if (config.label && el.tagName !== 'INPUT') {
+                        el.innerText = config.label;
+                    }
+                    // Pasang transisi jika disediakan di cetak biru
+                    if (config.transition) {
+                        el.style.transition = config.transition;
+                    }
+                }
+            }
+        }
+        
+        // Eksekusi penataan visual tepat saat DOM siap di memori HP
+        document.addEventListener("DOMContentLoaded", applyBlueprintUI);
+    </script>
+
+    <!-- Memuat Mesin Logika Utama -->
     <script src="brain.js"></script>
 </body>
 </html>
