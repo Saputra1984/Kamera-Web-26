@@ -6,7 +6,8 @@ window.APP_DATABASE = {
       "version": "1.0.0" 
     },
     "settings": { 
-      "default_format": "webp_max", 
+      "default_format_foto": "webp_max", 
+      "default_format_video": "video_webm",
       "default_sharpness": "max", 
       "default_color_mode": "natural",
       "default_facing": "environment", 
@@ -33,7 +34,21 @@ window.APP_DATABASE = {
       "natural": "saturate(1.1) contrast(0.95)",
       "malam": "saturate(1.2) contrast(1.3) brightness(1.6)",
       "teks": "saturate(1.05) contrast(1.12) brightness(1.02)"
+    },
+    "camera_hardware_config": {
+      "ideal_width": 1280,
+      "ideal_height": 720
+    },
+    "burst_mode": {
+        "frame_count": 3,
+        "interval_ms": 15,
+        "jpeg_quality": 0.8
     }
+  },
+
+  "gallery": {
+      "display": [], 
+      "archive": []  
   },
 
   "auto_exposure_stabilizer": {
@@ -97,13 +112,12 @@ window.APP_DATABASE = {
     }
   },
 
-  // SLOT LOGIKA BARU: Menggantikan fungsi Teropong Lama
   "ai_vision_core": {
     "enabled": true,
     "mode": "hdr_biological_super_res",
-    "local_contrast_strength": 1.35,  // Menaikkan ketajaman objek jauh (jendela/gedung)
-    "glare_cut_threshold": 225,        // Batas deteksi cahaya silau jendela
-    "shadow_lift_factor": 1.20,       // Mengangkat detail area gelap (dalam ruangan)
+    "local_contrast_strength": 1.35,
+    "glare_cut_threshold": 225,
+    "shadow_lift_factor": 1.20,
     "edge_boost_kernel": [
        0, -1,  0,
       -1,  5, -1,
@@ -114,10 +128,24 @@ window.APP_DATABASE = {
   "navigation_buttons": {
     "gallery_preview": { 
       "id": "gallery_preview", 
-      "type": "preview", 
+      "type": "trigger", 
       "action": "openGallery",
-      "label": "",
-      "ui_coordinate": { "position": "absolute", "bottom": "20px", "left": "20px", "z_index": "15", "width": "55px", "height": "55px", "background": "#222222", "border-radius": "8px" },
+      "label": "🖼️",
+      "ui_coordinate": { 
+        "position": "absolute", 
+        "bottom": "24px", 
+        "left": "40px", 
+        "z_index": "15", 
+        "width": "50px", 
+        "height": "50px", 
+        "background": "rgba(255,255,255,0.2)", 
+        "border": "2px solid #fff",
+        "border-radius": "8px",
+        "display": "flex",
+        "align-items": "center",
+        "justify-content": "center",
+        "font-size": "22px"
+      },
       "transition": "transform 0.3s ease"
     },
     "shutter_btn": { 
@@ -142,7 +170,6 @@ window.APP_DATABASE = {
       "type": "trigger",
       "action": "cycleTimer",
       "label": "⏱️",
-      // Dipindahkan sedikit lebih ke atas (top: 20%) agar tidak tertekan oleh slider
       "ui_coordinate": { 
         "position": "absolute", 
         "top": "20%", 
@@ -162,8 +189,6 @@ window.APP_DATABASE = {
       "min": -3,
       "max": 3,
       "step": 0.5,
-      // Menggunakan posisi tengah kiri (top: 50%) dengan transform-origin yang pas
-      // Nilai 'display: block' diaktifkan agar slider muncul dan bisa Anda geser langsung
       "ui_coordinate": { 
         "position": "absolute", 
         "top": "50%", 
@@ -176,7 +201,6 @@ window.APP_DATABASE = {
         "margin": "0"
       }
     },
-
     "triple_dot_btn": {
       "id": "triple_dot_btn",
       "type": "trigger",
@@ -194,7 +218,7 @@ window.APP_DATABASE = {
         "right": "15px", 
         "z_index": "20", 
         "width": "220px",
-        "max-height": "60vh", 
+        "max-height": "250px", 
         "overflow-y": "auto", 
         "display": "none", 
         "background": "rgba(10,10,10,0.95)", 
@@ -225,8 +249,8 @@ window.APP_DATABASE = {
       "label": "🎥 Opsi Format Video",
       "type": "parent_menu",
       "sub_menu": [
-        {"id": "fmt_vid_mp4", "label": "🎥 Video: MP4 (Standar)", "action": "setFormat", "value": "video_mp4"},
-        {"id": "fmt_vid_webm", "label": "🎥 Video: WebM (Ekstrem)", "action": "setFormat", "value": "video_webm"}
+        {"id": "fmt_vid_mp4", "label": "Format: MP4 (Standar)", "action": "setFormat", "value": "video_mp4"},
+        {"id": "fmt_vid_webm", "label": "Format: WebM (Ekstrem)", "action": "setFormat", "value": "video_webm"}
       ]
     },
     {
@@ -254,6 +278,13 @@ window.APP_DATABASE = {
       ]
     }
   ],
+
+  "slider_capabilities": {
+    "default": { "min": -3, "max": 3, "step": 0.5, "target": "exposure" },
+    "teks": { "min": 1.0, "max": 2.5, "step": 0.1, "target": "local_contrast" },
+    "jendela": { "min": 0, "max": 1, "step": 0.1, "target": "glare_reduction" },
+    "kain": { "min": 0.8, "max": 1.5, "step": 0.05, "target": "saturation" }
+  },
 
   "javascript_blueprints": {
     "anti_crash_loading": {
