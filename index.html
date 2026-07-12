@@ -37,7 +37,7 @@
             justify-content: center;
             border: none;
             outline: none;
-            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh di Android WebView */
+            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh */
         }
         
         /* Canvas untuk pemrosesan AI di balik layar */
@@ -63,7 +63,7 @@
     <!-- Memuat Basis Data Terlebih Dahulu -->
     <script src="database.js"></script>
 
-    <!-- Fungsi Jembatan untuk Menembakkan Blueprint UI ke Elemen Fisik HTML -->
+    <!-- Fungsi Jembatan untuk Layout CSS Saja (Tanpa Mengganggu Label Konten) -->
     <script>
         function applyBlueprintUI() {
             if (!window.APP_DATABASE || !window.APP_DATABASE.navigation_buttons) return;
@@ -74,23 +74,16 @@
                 const el = document.getElementById(config.id);
                 
                 if (el && config.ui_coordinate) {
-                    // Terapkan seluruh aturan style CSS yang tersimpan di database.js secara dinamis
+                    // Hanya atur posisi, ukuran, dan warna CSS agar presisi di layar Xiaomi 5A
                     for (const styleProp in config.ui_coordinate) {
                         el.style[styleProp] = config.ui_coordinate[styleProp];
                     }
-                    // Berikan label teks/ikon (seperti 🖼️, ⏱️, ⋮) jika ada
-                    if (config.label && el.tagName !== 'INPUT') {
-                        el.innerText = config.label;
-                    }
-                    // Pasang transisi jika disediakan di cetak biru
                     if (config.transition) {
                         el.style.transition = config.transition;
                     }
                 }
             }
         }
-        
-        // Eksekusi penataan visual tepat saat DOM siap di memori HP
         document.addEventListener("DOMContentLoaded", applyBlueprintUI);
     </script>
 
