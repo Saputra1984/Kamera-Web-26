@@ -4,90 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ai Picture</title>
-    
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#000000">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-
     <style>
-        /* Reset dasar untuk layar hitam penuh */
+        /* CSS Dasar tetap di sini, tapi pengaturan posisi tombol pindahkan ke brain.js */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body, html { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        
-        /* Wadah Utama Viewfinder */
-        #camera-view { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            z-index: 1; 
-        }
-        
-        /* Elemen tombol sebagai wadah kosong (Z-index harus di atas kamera) */
-        .ui-element { 
-            position: absolute; 
-            z-index: 10; 
-            touch-action: none; 
-            user-select: none; 
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: none;
-            outline: none;
-            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh */
-        }
-        
-        /* Canvas untuk pemrosesan AI di balik layar */
+        #camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        .ui-element { position: absolute; z-index: 10; touch-action: none; display: flex; align-items: center; justify-content: center; border: none; outline: none; -webkit-tap-highlight-color: transparent; }
         #processing-canvas { display: none; }
     </style>
 </head>
 <body>
     <video id="camera-view" autoplay playsinline></video>
-
-    <!-- Komponen Tombol Fisik Antarmuka -->
     <button id="gallery_preview" class="ui-element"></button>
     <button id="shutter_btn" class="ui-element"></button>
-    
     <div id="right_actions_container" class="ui-element"></div>
-    
     <button id="timer_btn" class="ui-element"></button>
     <input type="range" id="expSlider" class="ui-element">
     <button id="triple_dot_btn" class="ui-element"></button>
     <div id="dropdownMenu"></div>
-
     <canvas id="processing-canvas"></canvas>
 
-    <!-- Memuat Basis Data Terlebih Dahulu -->
+    <!-- Urutan loading database dulu, baru brain -->
     <script src="database.js"></script>
-
-    <!-- Fungsi Jembatan untuk Layout CSS Saja (Tanpa Mengganggu Label Konten) -->
-    <script>
-        function applyBlueprintUI() {
-            if (!window.APP_DATABASE || !window.APP_DATABASE.navigation_buttons) return;
-            const buttons = window.APP_DATABASE.navigation_buttons;
-
-            for (const key in buttons) {
-                const config = buttons[key];
-                const el = document.getElementById(config.id);
-                
-                if (el && config.ui_coordinate) {
-                    // Hanya atur posisi, ukuran, dan warna CSS agar presisi di layar Xiaomi 5A
-                    for (const styleProp in config.ui_coordinate) {
-                        el.style[styleProp] = config.ui_coordinate[styleProp];
-                    }
-                    if (config.transition) {
-                        el.style.transition = config.transition;
-                    }
-                }
-            }
-        }
-        document.addEventListener("DOMContentLoaded", applyBlueprintUI);
-    </script>
-
-    <!-- Memuat Mesin Logika Utama -->
     <script src="brain.js"></script>
 </body>
 </html>
