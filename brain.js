@@ -783,34 +783,19 @@ function prosesPemadatanMataManusia(buffers, w, h) {
     const output = ctx.createImageData(w, h);
     const data = output.data;
     
-    const cie = appMemory.db.human_eye_perception_formula.luminance_weights_cie1931;
-    const tone = appMemory.db.human_eye_perception_formula.tone_mapping;
-    
     const f1 = buffers[0].data;
     const f2 = buffers[1].data;
     const f3 = buffers[2].data;
 
+    // LANGKAH MURNI: Hanya merata-ratakan 3 frame burst untuk gambar yang bersih (Raw Merge)
     for (let i = 0; i < data.length; i += 4) {
-        let r = (f1[i] + f2[i] + f3[i]) / 3;
-        let g = (f1[i+1] + f2[i+1] + f3[i+1]) / 3;
-        let b = (f1[i+2] + f2[i+2] + f3[i+2]) / 3;
-
-        let luminance = (r * cie.r) + (g * cie.g) + (b * cie.b);
-
-        if (luminance > tone.trigger_glare_above) {
-            const faktorRedam = tone.glare_dim_factor;
-            r *= faktorRedam;
-            g *= faktorRedam;
-            b *= faktorRedam;
-        }
-
-        data[i] = Math.min(tone.max_clipping_safety, r);
-        data[i+1] = Math.min(tone.max_clipping_safety, g);
-        data[i+2] = Math.min(tone.max_clipping_safety, b);
-        data[i+3] = 255; 
+        data[i]     = (f1[i] + f2[i] + f3[i]) / 3;     // Red
+        data[i+1]   = (f1[i+1] + f2[i+1] + f3[i+1]) / 3; // Green
+        data[i+2]   = (f1[i+2] + f2[i+2] + f3[i+2]) / 3; // Blue
+        data[i+3]   = 255;                               // Alpha (Full)
     }
     
-    // Jalankan penajaman matriks mikro AI
+    // Kirim gambar mentah yang bersih ke satu-satunya mesin AI
     applyBilateralSharpening(data, w, h);
     ctx.putImageData(output, 0, 0);
     
@@ -818,10 +803,10 @@ function prosesPemadatanMataManusia(buffers, w, h) {
         applySquintReflex(canvas, w, h);
     }
     
-    // LOGIKA CERDAS GABUNGAN FORMAT & KUALITAS
-    const formatTerpilih = appMemory.defaultFormatFoto || "webp"; // Nilai: webp, jpeg, png, pdf
-    const kualitasTerpilih = appMemory.exportQuality || "standar"; // Nilai: low, standar, high
-    let profileKey = "webp"; // Default fallback
+    // LOGIKA FORMAT & KUALITAS
+    const formatTerpilih = appMemory.defaultFormatFoto || "webp"; 
+    const kualitasTerpilih = appMemory.exportQuality || "standar"; 
+    let profileKey = "webp"; 
 
     if (formatTerpilih === "webp") {
         profileKey = (kualitasTerpilih === "high") ? "webp_max" : "webp";
@@ -836,10 +821,8 @@ function prosesPemadatanMataManusia(buffers, w, h) {
     const profile = window.APP_DATABASE.shutter_pipeline.processing_profiles[profileKey];
     
     if (formatTerpilih === "pdf") {
-        // Alur Khusus: Konversi ke File Dokumen PDF
         prosesSimpanSebagaiPDF(canvas);
     } else {
-        // Alur Normal: Simpan sebagai file gambar (WebP, JPEG, PNG)
         const finalDataURL = canvas.toDataURL(profile.mime_type, profile.quality);
         saveImageToAppGallery(finalDataURL);
     }
@@ -1051,12 +1034,10 @@ function applyBilateralSharpening(data, w, h) {
     const feature = appMemory.activeFeature || "normal";
     const sliderVal = appMemory.featureSliderValues[feature];
     
-    // 1. Ambil profil parameters langsung dari database secara dinamis
     const profileRegistry = appMemory.db.ai_reconstruction_profiles || {};
     const profile = profileRegistry[feature] || profileRegistry["normal"];
     const toneData = appMemory.db.human_eye_perception_formula.tone_mapping;
 
-    // 2. Ambil nilai dasar yang bisa kita edit manual di database
     let glareThreshold = profile.glare_threshold;
     let shadowLift = profile.shadow_lift;
     let saturation = profile.saturation;
@@ -1065,7 +1046,6 @@ function applyBilateralSharpening(data, w, h) {
     
     let isInfraredMode = (feature === "gelap");
 
-    // Jika masuk mode booster khusus, nilai slider ikut memengaruhi shadow lift secara dinamis
     if (feature === "malam" || feature === "gelap") {
         shadowLift = sliderVal; 
     }
@@ -1077,31 +1057,25 @@ function applyBilateralSharpening(data, w, h) {
          0, -1,  0
     ];
 
-    let y, x, ky, kx, i, pixelTetanggaIdx, kIdx, kVal;
-    let r, g, b, brightness, factor;
-    let accR, accG, accB;
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            const i = (y * w + x) * 4;
 
-    for (y = 1; y < h - 1; y++) {
-        for (x = 1; x < w - 1; x++) {
-            i = (y * w + x) * 4;
+            let r = bufferAsli[i];
+            let g = bufferAsli[i+1];
+            let b = bufferAsli[i+2];
 
-            r = bufferAsli[i];
-            g = bufferAsli[i+1];
-            b = bufferAsli[i+2];
-
-            // SIMULASI INFRAMERAH (Monokrom Hijau)
-            if (isInfraredMode) {
-                brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-                let finalLumi = brightness * shadowLift;
-                finalLumi = Math.max(0, Math.min(255, finalLumi));
-                
-                data[i]     = finalLumi * 0.4;  
+            // 1. JALUR KHUSUS INFRAMERAH (Mode Gelap)
+            if (isInfraredMode && feature === "gelap") {
+                let brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                let finalLumi = Math.max(0, Math.min(255, brightness * shadowLift));
+                data[i]     = finalLumi * 0.3;  
                 data[i+1]   = finalLumi;        
-                data[i+2]   = finalLumi * 0.4;  
+                data[i+2]   = finalLumi * 0.5;  
                 continue; 
             }
 
-            // REDUKSI NOISE
+            // 2. REDUKSI NOISE (Jika aktif di database)
             if (isNoiseReduction) {
                 const iKiri = i - 4;
                 const iKanan = i + 4;
@@ -1110,41 +1084,54 @@ function applyBilateralSharpening(data, w, h) {
                 b = (b + bufferAsli[iKiri+2] + bufferAsli[iKanan+2]) / 3;
             }
 
-            brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            // Dapatkan nilai kecerahan piksel tunggal
+            let brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-            // PENJINAKAN SILAU (Gambar Mentah Diredupkan) & PENGANGKAT BAYANGAN (HDR)
-            if (brightness > glareThreshold) {
-                // Gambar mentah diredupkan berdasarkan faktor redup di database biologis
-                factor = brightness / 255;
-                const dimAmt = toneData.glare_dim_factor || 0.92;
-                r /= (factor * (2.0 - dimAmt));
-                g /= (factor * (2.0 - dimAmt));
-                b /= (factor * (2.0 - dimAmt));
-            } else if (brightness < 90) {
-                // Angkat area gelap secara proporsional sesuai parameter database
-                r = Math.min(255, r * shadowLift);
-                g = Math.min(255, g * shadowLift);
-                b = Math.min(255, b * shadowLift);
+            // 3. JALUR FILTER PEWARNAAN BERDASARKAN FITUR AKTIF
+            if (feature === "normal" || feature === "natural") {
+                // Mode natural: Hanya menaikkan kecerahan tipis (shadow_lift) untuk membuang kabut
+                if (shadowLift !== 1.0) {
+                    r = Math.min(255, r * shadowLift);
+                    g = Math.min(255, g * shadowLift);
+                    b = Math.min(255, b * shadowLift);
+                }
+            } else {
+                // Mode Fungsional: Peredam Silau & Pengangkat Gelap Aktif secara proporsional
+                if (brightness > glareThreshold) {
+                    const factor = brightness / 255;
+                    const dimAmt = toneData.glare_dim_factor || 0.92;
+                    // Redam silau secara merata ke semua channel RGB agar tidak bergeser ke hijau-biru
+                    r /= (factor * (2.0 - dimAmt));
+                    g /= (factor * (2.0 - dimAmt));
+                    b /= (factor * (2.0 - dimAmt));
+                } else if (brightness < 90) {
+                    r = Math.min(255, r * shadowLift);
+                    g = Math.min(255, g * shadowLift);
+                    b = Math.min(255, b * shadowLift);
+                }
             }
 
-            // KONTROL SATURASI MANUAL (Mengunci warna agar tetap natural sesuai instruksi database)
+            // Hitung ulang kecerahan pasca-filter untuk pemrosesan saturasi adem
+            brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            // 4. EFEK KACAMATA HITAM (Mengatur Keademan Warna)
             if (saturation !== 1.0) {
                 r = brightness + (r - brightness) * saturation;
                 g = brightness + (g - brightness) * saturation;
                 b = brightness + (b - brightness) * saturation;
             }
 
-            // PENAJAMAN GARIS TEPI
+            // 5. PENAJAMAN GARIS TEPI (Convolution Laplacian)
             if (edgeBoost > 0) {
-                accR = 0; accG = 0; accB = 0;
-                kIdx = 0;
-                for (ky = -1; ky <= 1; ky++) {
-                    for (kx = -1; kx <= 1; kx++) {
+                let accR = 0, accG = 0, accB = 0;
+                let kIdx = 0;
+                for (let ky = -1; ky <= 1; ky++) {
+                    for (let kx = -1; kx <= 1; kx++) {
                         const safeY = Math.max(0, Math.min(h - 1, y + ky));
                         const safeX = Math.max(0, Math.min(w - 1, x + kx));
-                        pixelTetanggaIdx = (safeY * w + safeX) * 4;
+                        const pixelTetanggaIdx = (safeY * w + safeX) * 4;
+                        const kVal = kernel[kIdx++];
                         
-                        kVal = kernel[kIdx++];
                         accR += bufferAsli[pixelTetanggaIdx] * kVal;
                         accG += bufferAsli[pixelTetanggaIdx] * kVal;
                         accB += bufferAsli[pixelTetanggaIdx] * kVal;
@@ -1155,7 +1142,7 @@ function applyBilateralSharpening(data, w, h) {
                 b = (accB * edgeBoost) + (b * (1 - edgeBoost));
             }
 
-            // BATAS CLIPPING AMAN BIOLOGIS
+            // Kunci output akhir di batas aman RGB
             data[i]     = Math.max(0, Math.min(toneData.max_clipping_safety || 255, r));
             data[i+1]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, g));
             data[i+2]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, b));
