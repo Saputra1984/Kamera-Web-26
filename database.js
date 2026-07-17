@@ -1,4 +1,4 @@
-// database.js - Pusat Data dan Cetak Biru (Blueprint) Aplikasi "Ai Picture"
+// database.js - Pusat Data, Kontrol Booster, dan Cetak Biru (Blueprint) Aplikasi "Ai Picture"
 window.APP_DATABASE = {
   "app_config": {
     "metadata": { 
@@ -12,18 +12,242 @@ window.APP_DATABASE = {
       "default_color_mode": "natural",
       "default_facing": "environment", 
       "aspect_ratio": "4:3", 
+      "orientation_lock": "forced_portrait",
       "stability_mode": "hardware_assisted",
       "theme": "dark_void",
       "background_color": "#000000"
     }
   },
 
-  "sharpness_modes": {
-    "low": { "level": 3, "contrast_assist": 1.02, "desc": "Ketajaman Makro 3x (Serat Kain)" },
-    "standar": { "level": 5, "contrast_assist": 1.05, "desc": "Ketajaman Tinggi 5x (Garis Tegas)" },
-    "max": { "level": 10, "contrast_assist": 1.10, "desc": "Ketajaman Mikroskopis 10x (Detail Mikro)" }
+  // Menyediakan wadah penyimpanan dinamis untuk slider booster agar tidak error di brain.js
+  "active_settings": {
+    "normal_exposure": -0.5,
+    "ketajaman_level": 1.0,
+    "jendela_exposure": -1.5,
+    "kain_intensity": 1.4,
+    "text_sharpness": 2.2,
+    "ir_gain": 1.8,
+    "night_brightness": 1.3,
+    "object_edge": 1.0,
+    "zoom_level": 1.5,
+    "default_exposure": 0.0
   },
 
+  "viewport_adaptation": {
+    "portrait": {
+      "video_css": "width: 100%; height: 100%; object-fit: cover; transition: all 0.4s ease;"
+    },
+    "landscape": {
+      "video_css": "width: 100%; height: 100%; object-fit: contain; transition: all 0.4s ease;"
+    }
+  },
+
+  "navigation_buttons": {
+    // ZONA ATAS (Menu Titik Tiga)
+    "triple_dot_btn": {
+      "id": "triple_dot_btn",
+      "type": "trigger",
+      "action": "toggleMenuBox",
+      "label": "⋮",
+      "allow_rotation": true,
+      "rotation_mode": "icon_only",
+      "ui_coordinate": { 
+        "position": "absolute", "top": "15px", "right": "15px", "z-index": "15", 
+        "font-size": "28px", "background": "transparent", "color": "#ffffff",
+        "width": "40px", "height": "40px", "display": "flex", "align-items": "center", "justify-content": "center"
+      },
+      "transition": "transform 0.3s ease"
+    },
+
+    // ZONA TENGAH KIRI - WADAH KOKOH & SLIDER BOOSTER (Vertikal Tetap Permanen)
+    "left_slider_container": {
+      "id": "left_slider_container",
+      "type": "container",
+      "allow_rotation": false, 
+      "ui_coordinate": {
+        "position": "absolute", 
+        "top": "50%",                  
+        "transform": "translateY(-50%)", 
+        "left": "15px", 
+        "z-index": "15",
+        "width": "42px", 
+        "height": "240px",             
+        "background": "rgba(255, 255, 255, 0.05)", 
+        "border": "1px solid rgba(255, 255, 255, 0.1)", 
+        "border-radius": "20px",
+        "display": "flex", 
+        "align-items": "center", 
+        "justify-content": "center",
+        "box-shadow": "0 4px 12px rgba(0,0,0,0.5)"
+      }
+    },
+    "expSlider": {
+      "id": "expSlider",
+      "type": "slider",
+      "parent_id": "left_slider_container",
+      "action": "setExposure", // Disamakan dengan case action di brain.js
+      "ui_coordinate": { 
+        "width": "20px",               
+        "height": "200px",             
+        "-webkit-appearance": "slider-vertical", 
+        "background": "transparent", 
+        "outline": "none",
+        "cursor": "pointer"
+      }
+    },
+
+    // ZONA TENGAH LAINNYA
+    "timer_btn": {
+      "id": "timer_btn",
+      "type": "trigger",
+      "action": "cycleTimer",
+      "label": "⏱️",
+      "allow_rotation": true,
+      "rotation_mode": "layout_follow",
+      "ui_coordinate": { 
+        "position": "absolute", 
+        "top": "15%",                  
+        "left": "15px", 
+        "z-index": "15", 
+        "width": "42px", 
+        "height": "42px", 
+        "background": "rgba(255,255,255,0.2)", 
+        "color": "#fff", 
+        "border-radius": "50%",
+        "display": "flex",
+        "align-items": "center",
+        "justify-content": "center"
+      }
+    },
+
+    // ZONA BAWAH (Posisi Tetap di Bawah, Hanya Ikon Berputar)
+    "gallery_preview": { 
+      "id": "gallery_preview", "type": "trigger", "action": "openGallery", "label": "🖼️",
+      "allow_rotation": true, "rotation_mode": "icon_only",
+      "ui_coordinate": { 
+        "position": "absolute", "bottom": "25px", "left": "40px", "z-index": "15", 
+        "width": "52px", "height": "52px", "background": "rgba(255,255,255,0.2)", 
+        "border": "2px solid #fff", "border-radius": "8px", "display": "flex", "align-items": "center", "justify-content": "center", "font-size": "22px"
+      },
+      "transition": "transform 0.3s ease"
+    },
+    "shutter_btn": { 
+      "id": "shutter_btn", "type": "trigger", "action": "capture", "label": "⚪",
+      "allow_rotation": true, "rotation_mode": "icon_only",
+      "ui_coordinate": { 
+        "position": "absolute", "bottom": "15px", "left": "50%", "transform": "translateX(-50%)", "z-index": "15", 
+        "width": "72px", "height": "72px", "background": "#ffffff", "border-radius": "50%", "border": "4px solid rgba(0,0,0,0.3)",
+        "display": "flex", "align-items": "center", "justify-content": "center", "font-size": "24px"
+      },
+      "transition": "transform 0.3s ease"
+    },
+    "right_actions_container": {
+      "id": "right_actions_container",
+      "type": "container",
+      "allow_rotation": true,
+      "rotation_mode": "icon_only", 
+      "ui_coordinate": { 
+        "position": "absolute", "bottom": "15px", "right": "30px", "z-index": "15", 
+        "display": "flex", "flex-direction": "column", "gap": "12px", "width": "50px", "height": "auto"
+      },
+      "child_buttons": [
+        { "id": "switch_camera", "type": "toggle", "action": "switchCamera", "label": "🔄", "width": "46px", "height": "46px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%" },
+        { "id": "switch_mode", "type": "toggle", "action": "switchMode", "label": "📸", "width": "46px", "height": "46px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%" }
+      ]
+    },
+    "dropdownMenu": {
+      "id": "dropdownMenu", "type": "menu_box",
+      "ui_coordinate": { 
+        "position": "absolute", "top": "60px", "right": "15px", "z-index": "20", "width": "220px", "max-height": "250px", 
+        "overflow-y": "auto", "display": "none", "background": "rgba(10,10,10,0.95)", "border": "1px solid #222", "border-radius": "8px", "padding": "12px", "flex-direction": "column"
+      }
+    },
+    "focus-box": {
+      "id": "focus-box",
+      "type": "indicator",
+      "ui_coordinate": {
+        "position": "absolute",
+        "width": "70px",
+        "height": "70px",
+        "border": "2px dashed #ffeb3b",
+        "border-radius": "4px",
+        "display": "none",
+        "pointer-events": "none",
+        "z-index": "5",
+        "transform": "translate(-50%, -50%) scale(1.3)"
+      },
+      "transition": "transform 0.15s ease-out, opacity 0.2s ease-out"
+    }
+  },
+
+  "shutter_pipeline": {
+    "visual_effects": {
+      "flash_screen_css": "position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #ffffff; z-index: 99; opacity: 0; transition: opacity 0.1s ease;",
+      "flash_duration_ms": 150,
+      "button_cooldown_ms": 1000 
+    },
+    
+    "processing_profiles": {
+      "webp_max": {
+        "mime_type": "image/webp",
+        "quality": 1.0,
+        "extension": "webp",
+        "apply_ai_enhancement": true,
+        "max_canvas_width": 1920 
+      },
+      "webp": {
+        "mime_type": "image/webp",
+        "quality": 0.85,
+        "extension": "webp",
+        "apply_ai_enhancement": true,
+        "max_canvas_width": 1280
+      },
+      "jpeg_hr": {
+        "mime_type": "image/jpeg",
+        "quality": 0.95,
+        "extension": "jpg",
+        "apply_ai_enhancement": true,
+        "max_canvas_width": 1920
+      },
+      "jpeg": {
+        "mime_type": "image/jpeg",
+        "quality": 0.80,
+        "extension": "jpg",
+        "apply_ai_enhancement": false,
+        "max_canvas_width": 1280
+      },
+      "png": {
+        "mime_type": "image/png",
+        "quality": 1.0,
+        "extension": "png",
+        "apply_ai_enhancement": false,
+        "max_canvas_width": 1280
+      },
+      "pdf": {
+        "mime_type": "application/pdf",
+        "quality": 1.0,
+        "extension": "pdf",
+        "apply_ai_enhancement": true,
+        "max_canvas_width": 1920
+      }
+    },
+
+    "storage_policy": {
+      "save_to_local_storage": true,
+      "max_history_items": 5, 
+      "compress_thumbnail_quality": 0.3
+    }
+  },
+
+  "camera_hardware_config": {
+    "ideal_width": 1280,
+    "ideal_height": 720,
+    "aspect_ratio": 1.7777777778, 
+    "min_exposure": -2.0,         
+    "max_exposure": 2.0,          
+    "default_exposure": 0.0
+  },
+  
   "camera_features": {
     "zoom": { "current": 1, "max_hardware": "auto", "extreme_digital_multiplier": 4 },
     "exposure": { "current": 0, "min": -3, "max": 3, "step": 0.5 },
@@ -35,20 +259,11 @@ window.APP_DATABASE = {
       "malam": "saturate(1.2) contrast(1.3) brightness(1.6)",
       "teks": "saturate(1.05) contrast(1.12) brightness(1.02)"
     },
-    "camera_hardware_config": {
-      "ideal_width": 1280,
-      "ideal_height": 720
-    },
     "burst_mode": {
         "frame_count": 3,
         "interval_ms": 15,
         "jpeg_quality": 0.8
     }
-  },
-
-  "gallery": {
-      "display": [], 
-      "archive": []  
   },
 
   "auto_exposure_stabilizer": {
@@ -64,30 +279,6 @@ window.APP_DATABASE = {
       "outdoor_bright": {
         "trigger_luminance_above": 200,
         "adjust_filter": "brightness(0.90) contrast(0.95)"
-      },
-      "backlight_siluet": {
-        "detection_mode": "center_vs_edges_delta",
-        "trigger_delta_above": 90,
-        "adjust_filter": "brightness(1.30) contrast(1.15)",
-        "force_layer": "shadow_lift"
-      },
-      "lamp_highlight": {
-        "suppress_clipping": true,
-        "max_white_threshold": 245
-      },
-      "anti_glare_jendela": {
-        "base_brightness": 0.90,
-        "max_dim_offset": 0.35,
-        "base_contrast": 1.15,
-        "max_contrast_offset": 0.25,
-        "saturate": 1.10
-      },
-      "anti_glare_kain": {
-        "base_brightness": 0.95,
-        "max_dim_offset": 0.15,
-        "base_contrast": 1.05,
-        "max_contrast_offset": 0.10,
-        "saturate": 1.02
       }
     }
   },
@@ -112,141 +303,21 @@ window.APP_DATABASE = {
     }
   },
 
-  "ai_vision_core": {
-    "enabled": true,
-    "mode": "hdr_biological_super_res",
-    "local_contrast_strength": 1.35,
-    "glare_cut_threshold": 225,
-    "shadow_lift_factor": 1.20,
-    "edge_boost_kernel": [
-       0, -1,  0,
-      -1,  5, -1,
-       0, -1,  0
-    ]
-  },
-
-  "navigation_buttons": {
-    "gallery_preview": { 
-      "id": "gallery_preview", 
-      "type": "trigger", 
-      "action": "openGallery",
-      "label": "🖼️",
-      "ui_coordinate": { 
-        "position": "absolute", 
-        "bottom": "24px", 
-        "left": "40px", 
-        "z_index": "15", 
-        "width": "50px", 
-        "height": "50px", 
-        "background": "rgba(255,255,255,0.2)", 
-        "border": "2px solid #fff",
-        "border-radius": "8px",
-        "display": "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        "font-size": "22px"
-      },
-      "transition": "transform 0.3s ease"
-    },
-    "shutter_btn": { 
-      "id": "shutter_btn", 
-      "type": "trigger", 
-      "action": "capture",
-      "label": "",
-      "ui_coordinate": { "position": "absolute", "bottom": "15px", "left": "50%", "transform": "translateX(-50%)", "z_index": "15", "width": "68px", "height": "68px", "background": "#ffffff", "border-radius": "50%" },
-      "transition": "transform 0.3s ease"
-    },
-    "right_actions_container": {
-      "id": "right_actions_container",
-      "type": "container",
-      "ui_coordinate": { "position": "absolute", "bottom": "15px", "right": "20px", "z_index": "15", "display": "flex", "flex-direction": "column", "gap": "10px" },
-      "child_buttons": [
-        { "id": "switch_camera", "type": "toggle", "action": "switchCamera", "label": "🔄", "width": "45px", "height": "45px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%", "transition": "transform 0.3s ease" },
-        { "id": "switch_mode", "type": "toggle", "action": "switchMode", "label": "📸", "width": "45px", "height": "45px", "background": "rgba(255,255,255,0.2)", "color": "#fff", "border-radius": "50%", "transition": "transform 0.3s ease" }
-      ]
-    },
-    "timer_btn": {
-      "id": "timer_btn",
-      "type": "trigger",
-      "action": "cycleTimer",
-      "label": "⏱️",
-      "ui_coordinate": { 
-        "position": "absolute", 
-        "top": "20%", 
-        "left": "25px", 
-        "z_index": "10", 
-        "width": "45px", 
-        "height": "45px", 
-        "background": "rgba(255,255,255,0.2)", 
-        "color": "#fff", 
-        "border-radius": "50%" 
-      }
-    },
-    "expSlider": {
-      "id": "expSlider",
-      "type": "slider",
-      "action": "setExposure",
-      "min": -3,
-      "max": 3,
-      "step": 0.5,
-      "ui_coordinate": { 
-        "position": "absolute", 
-        "top": "50%", 
-        "left": "25px", 
-        "z_index": "10", 
-        "transform": "rotate(-90deg) translateX(-50%)", 
-        "transform-origin": "left center", 
-        "width": "160px", 
-        "display": "block",
-        "margin": "0"
-      }
-    },
-    "triple_dot_btn": {
-      "id": "triple_dot_btn",
-      "type": "trigger",
-      "action": "toggleMenuBox",
-      "label": "⋮",
-      "ui_coordinate": { "position": "absolute", "top": "15px", "right": "15px", "z_index": "10", "font-size": "28px", "background": "transparent", "color": "#ffffff" },
-      "transition": "transform 0.3s ease"
-    },
-    "dropdownMenu": {
-      "id": "dropdownMenu",
-      "type": "menu_box",
-      "ui_coordinate": { 
-        "position": "absolute", 
-        "top": "60px", 
-        "right": "15px", 
-        "z_index": "20", 
-        "width": "220px",
-        "max-height": "250px", 
-        "overflow-y": "auto", 
-        "display": "none", 
-        "background": "rgba(10,10,10,0.95)", 
-        "border": "1px solid #222",
-        "border-radius": "8px", 
-        "padding": "12px",
-        "flex-direction": "column"
-      }
-    }
-  },
-
   "menu_titik_tiga": [
     {
-      "id": "group_foto",
-      "label": "📸 Opsi Format Foto",
+      "id": "group_format_foto",
+      "label": "📸 Format Ekspor Foto",
       "type": "parent_menu",
       "sub_menu": [
-        {"id": "fmt_webp_max", "label": "Format: WebP Max (Lossless)", "action": "setFormat", "value": "webp_max"},
-        {"id": "fmt_webp", "label": "Format: WebP", "action": "setFormat", "value": "webp"},
-        {"id": "fmt_jpeg_hr", "label": "Format: JPEG High-Res", "action": "setFormat", "value": "jpeg_hr"},
-        {"id": "fmt_jpeg", "label": "Format: JPEG", "action": "setFormat", "value": "jpeg"},
-        {"id": "fmt_png",  "label": "Format: PNG",  "action": "setFormat", "value": "png"},
-        {"id": "fmt_pdf",  "label": "Format: PDF",  "action": "setFormat", "value": "pdf"}
+        {"id": "fmt_webp", "label": "Format: WebP (Rekomendasi)", "action": "setFormat", "value": "webp"},
+        {"id": "fmt_jpeg", "label": "Format: JPEG (Universal)", "action": "setFormat", "value": "jpeg"},
+        {"id": "fmt_png",  "label": "Format: PNG (Tanpa Kompresi)", "action": "setFormat", "value": "png"},
+        {"id": "fmt_pdf",  "label": "Format: PDF (Dokumen)", "action": "setFormat", "value": "pdf"}
       ]
     },
     {
-      "id": "group_video",
-      "label": "🎥 Opsi Format Video",
+      "id": "group_format_video",
+      "label": "🎥 Format Ekspor Video",
       "type": "parent_menu",
       "sub_menu": [
         {"id": "fmt_vid_mp4", "label": "Format: MP4 (Standar)", "action": "setFormat", "value": "video_mp4"},
@@ -254,52 +325,95 @@ window.APP_DATABASE = {
       ]
     },
     {
-      "id": "group_sharpness",
-      "label": "✨ Opsi Ketajaman Mikroskopis",
+      "id": "group_kualitas",
+      "label": "⚡ Kualitas File Ekspor",
       "type": "parent_menu",
       "sub_menu": [
-        {"id": "sharp_low", "label": "Ketajaman: Low (3x)", "action": "setSharpness", "value": "low"},
-        {"id": "sharp_std", "label": "Ketajaman: Standar (5x)", "action": "setSharpness", "value": "standar"},
-        {"id": "sharp_max", "label": "Ketajaman: Max (10x Ekstrem)", "action": "setSharpness", "value": "max"}
+        {"id": "qual_low", "label": "Kualitas: Low (Hemat Ruang)", "action": "setExportQuality", "value": "low"},
+        {"id": "qual_std", "label": "Kualitas: Standar (Rekomendasi)", "action": "setExportQuality", "value": "standar"},
+        {"id": "qual_high", "label": "Kualitas: High (Sangat Tajam)", "action": "setExportQuality", "value": "high"}
       ]
     },
     {
-      "id": "group_standalone_features",
-      "label": "⚙️ Fitur Tambahan",
-      "type": "direct_menu",
-      "items": [
-        {"id": "mode_malam", "label": "🌙 Mode: Malam", "action": "setColorMode", "value": "malam"},
-        {"id": "mode_teks", "label": "📄 Mode: Fokus Serat & Teks", "action": "setColorMode", "value": "teks"},
-        {"id": "mode_silau_jendela", "label": "🪟 Redam Silau Jendela", "action": "setAntiGlare", "value": "jendela"},
-        {"id": "mode_silau_kain", "label": "👕 Redam Silau Kain", "action": "setAntiGlare", "value": "kain"},
-        {"id": "mode_normal_silau", "label": "📷 Kembalikan Mode Normal", "action": "setAntiGlare", "value": "normal"},
-        {"id": "mode_stabil", "label": "🛡️ Mode: Stabil Kamera", "action": "toggleStability", "value": "true"},
-        {"id": "mode_fokus_kotak", "label": "🎯 Kotak Kunci Fokus: On/Off", "action": "toggleFocusBox", "value": "true"}
+      "id": "group_fitur_rekonstruksi_ai",
+      "label": "🧠 Mode Rekonstruksi AI",
+      "type": "parent_menu",
+      "sub_menu": [
+        {"id": "rec_normal",  "label": "📷 Mode: Normal", "action": "setActiveFeature", "value": "normal"},
+        {"id": "rec_ketajaman", "label": "✨ Mode: Ketajaman Ekstrem", "action": "setActiveFeature", "value": "ketajaman"},
+        {"id": "rec_jendela", "label": "🪟 Redam Silau Jendela", "action": "setActiveFeature", "value": "jendela"},
+        {"id": "rec_kain",    "label": "👕 Redam Silau / Serat Kain", "action": "setActiveFeature", "value": "kain"},
+        {"id": "rec_teks",    "label": "📄 Deteksi Serat & Teks", "action": "setActiveFeature", "value": "teks"},
+        {"id": "rec_gelap",   "label": "🟢 Simulasi Infra-Red", "action": "setActiveFeature", "value": "gelap"},
+        {"id": "rec_malam",   "label": "🌙 Mode: Malam HDR", "action": "setActiveFeature", "value": "malam"},
+        {"id": "rec_objek",   "label": "🎯 Fokus Batas Pola Objek", "action": "setActiveFeature", "value": "objek"},
+        {"id": "rec_zoom",    "label": "🔍 Mode: Super Zoom", "action": "setActiveFeature", "value": "zoom"}
       ]
     }
   ],
 
-  "slider_capabilities": {
-    "default": { "min": -3, "max": 3, "step": 0.5, "target": "exposure" },
-    "teks": { "min": 1.0, "max": 2.5, "step": 0.1, "target": "local_contrast" },
-    "jendela": { "min": 0, "max": 1, "step": 0.1, "target": "glare_reduction" },
-    "kain": { "min": 0.8, "max": 1.5, "step": 0.05, "target": "saturation" }
-  },
-
-  "javascript_blueprints": {
-    "anti_crash_loading": {
-      "desc": "Mencegah browser RAM 2GB force close saat mengolah WebP Max",
-      "logic": "shutterBtn.disabled = true; shutterBtn.innerText = '⏳...'; setTimeout(execute_canvas, 50);"
-    },
-    "multi_frame_buffer": {
-      "desc": "Membatasi riwayat foto di kiri bawah agar memori Chrome tidak meluap",
-      "max_slots": 5,
-      "logic": "cameraHistoryThumbs.unshift(base64Data); if(cameraHistoryThumbs.length > 5) cameraHistoryThumbs.pop();"
-    },
-    "magnetic_center_lock": {
-      "desc": "Memaksa gambar pratinjau kembali tegak lurus di tengah layar hitam setelah di-zoom",
-      "formulas": { "zoomScale": 1, "panX": 0, "panY": 0 },
-      "css_override": "previewImg.style.transform = 'translate(0px, 0px) scale(1)'; previewImg.style.transition = 'none';"
+  "slider_booster_routing": {
+    "registry": {
+      "normal": {
+        "name": "Kecerahan Sensor (Exposure)",
+        "min": -2.0, "max": 0.0, "step": 0.1, "default_value": -0.5,
+        "target_database_path": "active_settings.normal_exposure",
+        "realtime_feedback_formula": "brightness"
+      },
+      "ketajaman": {
+        "name": "Intensitas Ketajaman Kamera",
+        "min": 0.0, "max": 2.5, "step": 0.1, "default_value": 1.0,
+        "target_database_path": "active_settings.ketajaman_level",
+        "realtime_feedback_formula": "convolution_intensity"
+      },
+      "jendela": {
+        "name": "Redam Silau Jendela",
+        "min": -2.0, "max": -0.5, "step": 0.1, "default_value": -1.5,
+        "target_database_path": "active_settings.jendela_exposure",
+        "realtime_feedback_formula": "glare_cut"
+      },
+      "kain": {
+        "name": "Intensitas Detail Serat",
+        "min": 0.5, "max": 2.5, "step": 0.1, "default_value": 1.4,
+        "target_database_path": "active_settings.kain_intensity",
+        "realtime_feedback_formula": "convolution_intensity"
+      },
+      "teks": {
+        "name": "Penajam Batas Karakter",
+        "min": 1.0, "max": 3.0, "step": 0.1, "default_value": 2.2,
+        "target_database_path": "active_settings.text_sharpness",
+        "realtime_feedback_formula": "convolution_intensity"
+      },
+      "gelap": {
+        "name": "Sensitivitas Cahaya (ISO Gain)",
+        "min": 1.0, "max": 2.5, "step": 0.1, "default_value": 1.8,
+        "target_database_path": "active_settings.ir_gain",
+        "realtime_feedback_formula": "chroma_lock"
+      },
+      "malam": {
+        "name": "Kecerahan Area Gelap",
+        "min": 1.0, "max": 2.0, "step": 0.1, "default_value": 1.3,
+        "target_database_path": "active_settings.night_brightness",
+        "realtime_feedback_formula": "brightness"
+      },
+      "objek": {
+        "name": "Ketegasan Batas Pola",
+        "min": 0.5, "max": 2.0, "step": 0.1, "default_value": 1.0,
+        "target_database_path": "active_settings.object_edge",
+        "realtime_feedback_formula": "kernel_multiplier"
+      },
+      "zoom": {
+        "name": "Ketajaman Super Zoom AI",
+        "min": 1.0, "max": 3.0, "step": 0.1, "default_value": 1.5,
+        "target_database_path": "active_settings.zoom_level",
+        "realtime_feedback_formula": "zoom_transform" 
+      },
+      "default": {
+        "name": "Kecerahan Kamera",
+        "min": -1.0, "max": 1.0, "step": 0.1, "default_value": 0.0,
+        "target_database_path": "active_settings.default_exposure",
+        "realtime_feedback_formula": "brightness"
+      }
     }
   }
 };
