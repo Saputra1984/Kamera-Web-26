@@ -415,5 +415,57 @@ window.APP_DATABASE = {
         "realtime_feedback_formula": "brightness"
       }
     }
+  },
+
+  "ai_reconstruction_profiles": {
+    "normal": {
+      "glare_threshold": 220,
+      "shadow_lift": 1.0,
+      "edge_boost_multiplier": 1.0,
+      "saturation": 1.0,           // 1.0 artinya warna asli 100% natural
+      "noise_reduction": false
+    },
+    "kain": {
+      "glare_threshold": 190,
+      "shadow_lift": 1.1,          // Diangkat tipis saja agar lipatan kain terlihat
+      "edge_boost_multiplier": 1.0,
+      "saturation": 1.0,           // DIKUNCI KEMBALI KE NATURAL (Sebelumnya 1.15 yang bikin warna lari)
+      "noise_reduction": false
+    },
+    "teks": {
+      "glare_threshold": 200,
+      "shadow_lift": 0.9,
+      "edge_boost_multiplier": 1.0,
+      "saturation": 0.4,           // Sengaja diredam agar tinta tulisan lebih fokus dibanding warna kertas
+      "noise_reduction": true
+    },
+    "gelap": {
+      "glare_threshold": 255,
+      "shadow_lift": 1.2,
+      "edge_boost_multiplier": 0.0,
+      "saturation": 1.0,
+      "noise_reduction": false
+    },
+    "malam": {
+      "glare_threshold": 240,
+      "shadow_lift": 1.4,
+      "edge_boost_multiplier": 0.5,
+      "saturation": 1.05,          // Sedikit dorongan warna untuk malam hari
+      "noise_reduction": true
+    },
+    "objek": {
+      "glare_threshold": 220,
+      "shadow_lift": 1.0,
+      "edge_boost_multiplier": 1.0,
+      "saturation": 1.0,
+      "noise_reduction": false
+    },
+    "zoom": {
+      "glare_threshold": 220,
+      "shadow_lift": 1.0,
+      "edge_boost_multiplier": 1.5,
+      "saturation": 1.0,
+      "noise_reduction": true
+    }
   }
 };
