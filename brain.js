@@ -1050,58 +1050,27 @@ function updateCanvasTransform() {
 function applyBilateralSharpening(data, w, h) {
     const feature = appMemory.activeFeature || "normal";
     const sliderVal = appMemory.featureSliderValues[feature];
-    const quality = appMemory.exportQuality || "standar";
     
-    console.log(`[AI Engine] Memproses dengan Fitur: ${feature.toUpperCase()} (Kekuatan Slider: ${sliderVal.toFixed(2)}) - Kualitas: ${quality}`);
+    // 1. Ambil profil parameters langsung dari database secara dinamis
+    const profileRegistry = appMemory.db.ai_reconstruction_profiles || {};
+    const profile = profileRegistry[feature] || profileRegistry["normal"];
+    const toneData = appMemory.db.human_eye_perception_formula.tone_mapping;
+
+    // 2. Ambil nilai dasar yang bisa kita edit manual di database
+    let glareThreshold = profile.glare_threshold;
+    let shadowLift = profile.shadow_lift;
+    let saturation = profile.saturation;
+    let isNoiseReduction = profile.noise_reduction;
+    let edgeBoost = sliderVal * profile.edge_boost_multiplier;
+    
+    let isInfraredMode = (feature === "gelap");
+
+    // Jika masuk mode booster khusus, nilai slider ikut memengaruhi shadow lift secara dinamis
+    if (feature === "malam" || feature === "gelap") {
+        shadowLift = sliderVal; 
+    }
 
     const bufferAsli = new Uint8ClampedArray(data);
-    
-    let glareThreshold = 220;
-    let shadowLift = 1.0;
-    let edgeBoost = 0.0;
-    let saturation = 1.0;
-    let isNoiseReduction = false;
-    let isInfraredMode = false;
-
-    if (feature === "kain") {
-        glareThreshold = 180;
-        shadowLift = 1.3;
-        edgeBoost = sliderVal;  
-        saturation = 1.15;      
-    } 
-    if (feature === "ketajaman") {
-        glareThreshold = 220; 
-        shadowLift = 1.0;
-        edgeBoost = sliderVal;  // Nilai slider (0.0 s/d 2.5) langsung mengontrol kekuatan penajaman garis
-        saturation = 1.0;
-        isNoiseReduction = false;
-    }
-    else if (feature === "teks") {
-        glareThreshold = 200;
-        shadowLift = 0.9;
-        edgeBoost = sliderVal;  
-        saturation = 0.5;       
-        isNoiseReduction = true;
-    } 
-    else if (feature === "gelap") {
-        isInfraredMode = true;  
-        shadowLift = sliderVal; 
-    } 
-    else if (feature === "malam") {
-        glareThreshold = 240;
-        shadowLift = sliderVal; 
-        edgeBoost = 0.5;
-        isNoiseReduction = true;
-    } 
-    else if (feature === "objek") {
-        edgeBoost = sliderVal;  
-        saturation = 0.9;
-    }
-    else if (feature === "zoom") {
-        edgeBoost = sliderVal * 1.5; 
-        isNoiseReduction = true;
-    }
-
     const kernel = [
          0, -1,  0,
         -1,  5, -1,
@@ -1120,6 +1089,7 @@ function applyBilateralSharpening(data, w, h) {
             g = bufferAsli[i+1];
             b = bufferAsli[i+2];
 
+            // SIMULASI INFRAMERAH (Monokrom Hijau)
             if (isInfraredMode) {
                 brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
                 let finalLumi = brightness * shadowLift;
@@ -1131,6 +1101,7 @@ function applyBilateralSharpening(data, w, h) {
                 continue; 
             }
 
+            // REDUKSI NOISE
             if (isNoiseReduction) {
                 const iKiri = i - 4;
                 const iKanan = i + 4;
@@ -1141,29 +1112,34 @@ function applyBilateralSharpening(data, w, h) {
 
             brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
+            // PENJINAKAN SILAU (Gambar Mentah Diredupkan) & PENGANGKAT BAYANGAN (HDR)
             if (brightness > glareThreshold) {
+                // Gambar mentah diredupkan berdasarkan faktor redup di database biologis
                 factor = brightness / 255;
-                r /= (factor * 1.15);
-                g /= (factor * 1.15);
-                b /= (factor * 1.15);
+                const dimAmt = toneData.glare_dim_factor || 0.92;
+                r /= (factor * (2.0 - dimAmt));
+                g /= (factor * (2.0 - dimAmt));
+                b /= (factor * (2.0 - dimAmt));
             } else if (brightness < 90) {
+                // Angkat area gelap secara proporsional sesuai parameter database
                 r = Math.min(255, r * shadowLift);
                 g = Math.min(255, g * shadowLift);
                 b = Math.min(255, b * shadowLift);
             }
 
+            // KONTROL SATURASI MANUAL (Mengunci warna agar tetap natural sesuai instruksi database)
             if (saturation !== 1.0) {
                 r = brightness + (r - brightness) * saturation;
                 g = brightness + (g - brightness) * saturation;
                 b = brightness + (b - brightness) * saturation;
             }
 
+            // PENAJAMAN GARIS TEPI
             if (edgeBoost > 0) {
                 accR = 0; accG = 0; accB = 0;
                 kIdx = 0;
                 for (ky = -1; ky <= 1; ky++) {
                     for (kx = -1; kx <= 1; kx++) {
-                        // KOREKSI AMAN: Cegah koordinat bocor keluar bingkai piksel agar tidak menghasilkan NaN/Layar Hitam
                         const safeY = Math.max(0, Math.min(h - 1, y + ky));
                         const safeX = Math.max(0, Math.min(w - 1, x + kx));
                         pixelTetanggaIdx = (safeY * w + safeX) * 4;
@@ -1179,9 +1155,10 @@ function applyBilateralSharpening(data, w, h) {
                 b = (accB * edgeBoost) + (b * (1 - edgeBoost));
             }
 
-            data[i]     = Math.max(0, Math.min(255, r));
-            data[i+1]   = Math.max(0, Math.min(255, g));
-            data[i+2]   = Math.max(0, Math.min(255, b));
+            // BATAS CLIPPING AMAN BIOLOGIS
+            data[i]     = Math.max(0, Math.min(toneData.max_clipping_safety || 255, r));
+            data[i+1]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, g));
+            data[i+2]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, b));
         }
     }
 }
