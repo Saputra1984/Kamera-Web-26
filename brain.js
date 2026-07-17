@@ -1038,10 +1038,9 @@ function applyBilateralSharpening(data, w, h) {
     const profile = profileRegistry[feature] || profileRegistry["normal"];
     const toneData = appMemory.db.human_eye_perception_formula.tone_mapping;
 
-    let glareThreshold = profile.glare_threshold;
+    // Parameter kendali manual dari database
     let shadowLift = profile.shadow_lift;
     let saturation = profile.saturation;
-    let isNoiseReduction = profile.noise_reduction;
     let edgeBoost = sliderVal * profile.edge_boost_multiplier;
     
     let isInfraredMode = (feature === "gelap");
@@ -1051,6 +1050,8 @@ function applyBilateralSharpening(data, w, h) {
     }
 
     const bufferAsli = new Uint8ClampedArray(data);
+    
+    // Matriks Laplacian Khusus untuk menarik dimensi objek (Efek Timbul 2.5D)
     const kernel = [
          0, -1,  0,
         -1,  5, -1,
@@ -1067,7 +1068,7 @@ function applyBilateralSharpening(data, w, h) {
 
             // 1. JALUR KHUSUS INFRAMERAH (Mode Gelap)
             if (isInfraredMode && feature === "gelap") {
-                let brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+                let brightness = (r + g + b) / 3; // Gunakan rata-rata murni agar adil
                 let finalLumi = Math.max(0, Math.min(255, brightness * shadowLift));
                 data[i]     = finalLumi * 0.3;  
                 data[i+1]   = finalLumi;        
@@ -1075,53 +1076,52 @@ function applyBilateralSharpening(data, w, h) {
                 continue; 
             }
 
-            // 2. REDUKSI NOISE (Jika aktif di database)
-            if (isNoiseReduction) {
-                const iKiri = i - 4;
-                const iKanan = i + 4;
-                r = (r + bufferAsli[iKiri] + bufferAsli[iKanan]) / 3;
-                g = (g + bufferAsli[iKiri+1] + bufferAsli[iKanan+1]) / 3;
-                b = (b + bufferAsli[iKiri+2] + bufferAsli[iKanan+2]) / 3;
-            }
+            // 2. STRATEGI TERBALIK: MENGELAP KACA BURAM (PEMBERSIH KABUT)
+            // Hitung nilai kecerahan dasar tanpa bobot timpang
+            let v = (r + g + b) / 3; 
 
-            // Dapatkan nilai kecerahan piksel tunggal
-            let brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-            // 3. JALUR FILTER PEWARNAAN BERDASARKAN FITUR AKTIF
             if (feature === "normal" || feature === "natural") {
-                // Mode natural: Hanya menaikkan kecerahan tipis (shadow_lift) untuk membuang kabut
-                if (shadowLift !== 1.0) {
-                    r = Math.min(255, r * shadowLift);
-                    g = Math.min(255, g * shadowLift);
-                    b = Math.min(255, b * shadowLift);
+                // Proses Mengelap Kaca: Hilangkan efek kabut/pudar dengan menggeser kontras mikro secara jernih
+                if (v > 0 && v < 255) {
+                    // Formula peregangan kontras mikro untuk menaikkan cahaya putih jernih
+                    let targetV = v;
+                    if (v < 128) {
+                        targetV = v * (shadowLift * 0.95); // Angkat bayangan tipis agar kabut hilang
+                    } else {
+                        targetV = 255 - (255 - v) * (2.0 - shadowLift); // Naikkan cahaya putih agar jernih
+                    }
+                    targetV = Math.max(0, Math.min(255, targetV));
+                    
+                    // Kembalikan ke RGB secara proporsional agar warna aslinya TIDAK berubah rusak
+                    let ratio = targetV / v;
+                    r = Math.min(255, r * ratio);
+                    g = Math.min(255, g * ratio);
+                    b = Math.min(255, b * ratio);
                 }
             } else {
-                // Mode Fungsional: Peredam Silau & Pengangkat Gelap Aktif secara proporsional
-                if (brightness > glareThreshold) {
-                    const factor = brightness / 255;
-                    const dimAmt = toneData.glare_dim_factor || 0.92;
-                    // Redam silau secara merata ke semua channel RGB agar tidak bergeser ke hijau-biru
+                // Mode fungsional penjinak silau (kain/jendela)
+                if (v > profile.glare_threshold) {
+                    let factor = v / 255;
+                    let dimAmt = toneData.glare_dim_factor || 0.92;
                     r /= (factor * (2.0 - dimAmt));
                     g /= (factor * (2.0 - dimAmt));
                     b /= (factor * (2.0 - dimAmt));
-                } else if (brightness < 90) {
+                } else if (v < 90) {
                     r = Math.min(255, r * shadowLift);
                     g = Math.min(255, g * shadowLift);
                     b = Math.min(255, b * shadowLift);
                 }
             }
 
-            // Hitung ulang kecerahan pasca-filter untuk pemrosesan saturasi adem
-            brightness = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-            // 4. EFEK KACAMATA HITAM (Mengatur Keademan Warna)
+            // 3. EFEK KACAMATA HITAM (Membuat Warna Adem)
+            let vBaru = (r + g + b) / 3;
             if (saturation !== 1.0) {
-                r = brightness + (r - brightness) * saturation;
-                g = brightness + (g - brightness) * saturation;
-                b = brightness + (b - brightness) * saturation;
+                r = vBaru + (r - vBaru) * saturation;
+                g = vBaru + (g - vBaru) * saturation;
+                b = vBaru + (b - vBaru) * saturation;
             }
 
-            // 5. PENAJAMAN GARIS TEPI (Convolution Laplacian)
+            // 4. PENAJAMAN BERWARNA PROPORSIONAL (Mencegah Warna Blong & Efek 2.5D)
             if (edgeBoost > 0) {
                 let accR = 0, accG = 0, accB = 0;
                 let kIdx = 0;
@@ -1137,12 +1137,14 @@ function applyBilateralSharpening(data, w, h) {
                         accB += bufferAsli[pixelTetanggaIdx] * kVal;
                     }
                 }
+                
+                // KUNCI UTAMA: Penajaman mengikuti arah warna asli, bukan dihantam hitam-putih kasar
                 r = (accR * edgeBoost) + (r * (1 - edgeBoost));
                 g = (accG * edgeBoost) + (g * (1 - edgeBoost));
                 b = (accB * edgeBoost) + (b * (1 - edgeBoost));
             }
 
-            // Kunci output akhir di batas aman RGB
+            // Kunci output akhir di batas aman RGB komputasi
             data[i]     = Math.max(0, Math.min(toneData.max_clipping_safety || 255, r));
             data[i+1]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, g));
             data[i+2]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, b));
