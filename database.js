@@ -356,7 +356,7 @@ window.APP_DATABASE = {
     "registry": {
       "normal": {
         "name": "Kecerahan Sensor (Exposure)",
-        "min": -0.5, "max": 3.0, "step": 0.1, "default_value": -0.5,
+        "min": -2.0, "max": 1.0, "step": 0.1, "default_value": -0.5,
         "target_database_path": "active_settings.normal_exposure",
         "realtime_feedback_formula": "brightness"
       },
@@ -419,10 +419,10 @@ window.APP_DATABASE = {
 
   "ai_reconstruction_profiles": {
     "normal": {
-      "glare_threshold": 245,
-      "shadow_lift": 1.15,
-      "edge_boost_multiplier": 0.3,
-      "saturation": 0.95,           // 1.0 artinya warna asli 100% natural
+      "glare_threshold": 220,
+      "shadow_lift": 1.0,
+      "edge_boost_multiplier": 1.0,
+      "saturation": 1.0,           // 1.0 artinya warna asli 100% natural
       "noise_reduction": false
     },
     "kain": {
