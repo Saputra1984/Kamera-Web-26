@@ -4,29 +4,93 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Ai Picture</title>
+    
     <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+
     <style>
-        /* CSS Dasar tetap di sini, tapi pengaturan posisi tombol pindahkan ke brain.js */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body, html { width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        #camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        .ui-element { position: absolute; z-index: 10; touch-action: none; display: flex; align-items: center; justify-content: center; border: none; outline: none; -webkit-tap-highlight-color: transparent; }
+        /* Reset dasar untuk layar hitam penuh & pengunci gerakan */
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            -webkit-user-drag: none; /* Cegah elemen ditarik/geser tak sengaja */
+        }
+        
+        body, html { 
+            width: 100%; 
+            height: 100%; 
+            background: #000; 
+            overflow: hidden; 
+            font-family: sans-serif;
+            position: fixed; /* Kunci viewport total agar tidak memantul */
+        }
+        
+        /* Wadah Utama Viewfinder */
+        #camera-view { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            object-fit: cover; 
+            z-index: 1; 
+        }
+        
+        /* Elemen tombol sebagai wadah kosong (Z-index di atas kamera) */
+        .ui-element { 
+            position: absolute; 
+            z-index: 10; 
+            touch-action: none; 
+            user-select: none; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            outline: none;
+            background: transparent;
+            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh */
+        }
+
+        /* PENGAMAN SCROLL MENU: Mengizinkan usapan jari khusus untuk area menu titik tiga */
+        #dropdownMenu {
+            touch-action: pan-y !important; /* Izinkan scroll vertikal */
+            user-select: auto !important;
+        }
+        
+        /* Canvas untuk pemrosesan AI di balik layar */
         #processing-canvas { display: none; }
     </style>
 </head>
 <body>
-    <video id="camera-view" autoplay playsinline></video>
-    <button id="gallery_preview" class="ui-element"></button>
-    <button id="shutter_btn" class="ui-element"></button>
+    <video id="camera-view" autoplay playsinline muted></video>
+
+    <!-- Komponen Tombol Fisik Antarmuka -->
+    <button id="gallery_preview" class="ui-element"><span class="icon-art">🖼️</span></button>
+    <button id="shutter_btn" class="ui-element"><span class="icon-art">⚪</span></button>
+    
     <div id="right_actions_container" class="ui-element"></div>
-    <button id="timer_btn" class="ui-element"></button>
-    <input type="range" id="expSlider" class="ui-element">
-    <button id="triple_dot_btn" class="ui-element"></button>
-    <div id="dropdownMenu"></div>
+    
+    <button id="timer_btn" class="ui-element"><span class="icon-art">⏱️</span></button>
+
+    <!-- WADAH SLIDER KIRI (Rumah fisik agar slider berada tepat di kiri tengah) -->
+    <div id="left_slider_container" class="ui-element">
+        <input type="range" id="expSlider">
+    </div>
+
+    <button id="triple_dot_btn" class="ui-element"><span class="icon-art">⋮</span></button>
+    
+    <!-- Wadah menu dropdown -->
+    <div id="dropdownMenu" class="ui-element"></div>
+
     <canvas id="processing-canvas"></canvas>
 
-    <!-- Urutan loading database dulu, baru brain -->
+    <!-- Memuat Basis Data Terlebih Dahulu -->
     <script src="database.js"></script>
+
+    <!-- Memuat Mesin Logika Utama -->
     <script src="brain.js"></script>
 </body>
 </html>
