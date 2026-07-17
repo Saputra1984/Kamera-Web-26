@@ -356,7 +356,7 @@ window.APP_DATABASE = {
     "registry": {
       "normal": {
         "name": "Kecerahan Sensor (Exposure)",
-        "min": -2.0, "max": 1.0, "step": 0.1, "default_value": -0.5,
+        "min": -2.0, "max": 0.0, "step": 0.1, "default_value": -0.5,
         "target_database_path": "active_settings.normal_exposure",
         "realtime_feedback_formula": "brightness"
       },
