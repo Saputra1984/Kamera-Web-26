@@ -419,10 +419,10 @@ window.APP_DATABASE = {
 
   "ai_reconstruction_profiles": {
     "normal": {
-      "glare_threshold": 180,
-      "shadow_lift": 1.3,
+      "glare_threshold": 220,
+      "shadow_lift": 1.0,
       "edge_boost_multiplier": 1.0,
-      "saturation": 0.8,           // 1.0 artinya warna asli 100% natural
+      "saturation": 1.0,           // 1.0 artinya warna asli 100% natural
       "noise_reduction": false
     },
     "kain": {
