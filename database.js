@@ -404,7 +404,7 @@ window.APP_DATABASE = {
       },
       "zoom": {
         "name": "Ketajaman Super Zoom AI",
-        "min": -1.0, "max": 3.0, "step": 0.1, "default_value": 1.5,
+        "min": 1.0, "max": 3.0, "step": 0.1, "default_value": 1.5,
         "target_database_path": "active_settings.zoom_level",
         "realtime_feedback_formula": "zoom_transform" 
       },
@@ -469,7 +469,7 @@ window.APP_DATABASE = {
     "zoom": {
       "glare_threshold": 245,
       "shadow_lift": 1.0,
-      "edge_boost_multiplier": 1.5,
+      "edge_boost_multiplier": -0.5,
       "saturation": 1.0
     }
   }
