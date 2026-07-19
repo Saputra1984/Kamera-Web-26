@@ -468,9 +468,9 @@ window.APP_DATABASE = {
     },
     "zoom": {
       "glare_threshold": 180,
-      "shadow_lift": 1.1,
+      "shadow_lift": 0.1,
       "edge_boost_multiplier": 1.5,
-      "saturation": 0.8
+      "saturation": 1.0
     }
   }
 };
