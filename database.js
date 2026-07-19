@@ -467,10 +467,10 @@ window.APP_DATABASE = {
       "saturation": 1.0
     },
     "zoom": {
-      "glare_threshold": 220,
+      "glare_threshold": 180,
       "shadow_lift": 1.1,
       "edge_boost_multiplier": 1.5,
-      "saturation": 1.0
+      "saturation": 0.8
     }
   }
 };
