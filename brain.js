@@ -787,15 +787,15 @@ function prosesPemadatanMataManusia(buffers, w, h) {
     const f2 = buffers[1].data;
     const f3 = buffers[2].data;
 
-    // LANGKAH MURNI: Hanya merata-ratakan 3 frame burst untuk gambar yang bersih (Raw Merge)
+    // JALUR MURNI (RAW MERGE): Hanya merata-ratakan 3 frame untuk membuang noise fisik sensor
     for (let i = 0; i < data.length; i += 4) {
         data[i]     = (f1[i] + f2[i] + f3[i]) / 3;     // Red
         data[i+1]   = (f1[i+1] + f2[i+1] + f3[i+1]) / 3; // Green
         data[i+2]   = (f1[i+2] + f2[i+2] + f3[i+2]) / 3; // Blue
-        data[i+3]   = 255;                               // Alpha (Full)
+        data[i+3]   = 255;                               // Alpha
     }
     
-    // Kirim gambar mentah yang bersih ke satu-satunya mesin AI
+    // Kirim gambar mentah hasil gabungan ke satu-satunya dapur AI pembawa efek 2.5D
     applyBilateralSharpening(data, w, h);
     ctx.putImageData(output, 0, 0);
     
@@ -803,7 +803,7 @@ function prosesPemadatanMataManusia(buffers, w, h) {
         applySquintReflex(canvas, w, h);
     }
     
-    // LOGIKA FORMAT & KUALITAS
+    // LOGIKA FORMAT & KUALITAS EKSPOR
     const formatTerpilih = appMemory.defaultFormatFoto || "webp"; 
     const kualitasTerpilih = appMemory.exportQuality || "standar"; 
     let profileKey = "webp"; 
@@ -1059,18 +1059,17 @@ function applyBilateralSharpening(data, w, h) {
         for (let x = 1; x < w - 1; x++) {
             const i = (y * w + x) * 4;
 
-            // 1. AMBIL WARNA ASLI DARI SENSOR KAMERA MENTAH
+            // 1. DOCKING REALITAS: Ambil komponen asli dari sensor fisik kamera
             const rAsli = bufferAsli[i];
             const gAsli = bufferAsli[i+1];
             const bAsli = bufferAsli[i+2];
 
-            // Hitung total cahaya asli sebagai dasar pembagi (pembentuk proporsi warna)
             const totalCahayaAsli = rAsli + gAsli + bAsli;
 
-            // Jika piksel hitam total, lewati agar tidak error pembagian matematis
+            // Pengaman pixel hitam agar tidak terjadi pembagian dengan angka nol
             if (totalCahayaAsli === 0) continue;
 
-            // KUNCI PROPORSI: Hitung persentase murni masing-masing warna asli
+            // KUNCI RASIO MUTLAK: Catat identitas warna asli sebelum diolah AI
             const persenR = rAsli / totalCahayaAsli;
             const persenG = gAsli / totalCahayaAsli;
             const persenB = bAsli / totalCahayaAsli;
@@ -1079,38 +1078,40 @@ function applyBilateralSharpening(data, w, h) {
             let g = gAsli;
             let b = bAsli;
 
-            // JALUR MODIFIKASI CAHAYA (Hanya Mengubah Nilai Terang/Redup)
-            let v = totalCahayaAsli / 3; // Rata-rata cahaya saat ini
+            // 2. WILAYAH CAHAYA: AI MENGATUR KECERAHAN & KEJERNIHAN (MENGELAP KACA)
+            let v = totalCahayaAsli / 3; // Nilai rata-rata cahaya piksel saat ini
 
             if (feature === "normal" || feature === "natural") {
-                // TUGAS AI: Hanya menaikkan atau menurunkan cahaya putih jernih (Mengelap Kaca)
+                // Strategi Terbalik Mode Natural: Mengelap kabut visual berdasarkan database shadow_lift
                 if (v < 128) {
-                    v = v * shadowLift; 
+                    v = v * shadowLift; // Menerangkan bayangan tipis agar kabut hilang
                 } else {
-                    v = 255 - (255 - v) * (2.0 - shadowLift); 
+                    v = 255 - (255 - v) * (2.0 - shadowLift); // Mencerahkan putih jernih tanpa merusak detail
                 }
             } else {
-                // Mode fungsional (kain/jendela/malam)
+                // Alur Fungsional Pengatur Lalu Lintas Cahaya
                 if (v > profile.glare_threshold) {
+                    // Wilayah Atas: Meredam cahaya silau secara merata di ranah cahaya
                     const factor = v / 255;
                     const dimAmt = toneData.glare_dim_factor || 0.92;
-                    v /= (factor * (2.0 - dimAmt)); // Meredupkan murni nilai cahayanya
+                    v /= (factor * (2.0 - dimAmt));
                 } else if (v < 90) {
-                    v = v * shadowLift; // Menerangkan murni nilai cahayanya
+                    // Wilayah Bawah: Mengangkat area yang gelap agar detail terlihat
+                    v = v * shadowLift;
                 }
             }
 
-            // Kembalikan nilai kecerahan baru (v) ke dalam RGB awal
+            // Terapkan kecerahan baru (v) sementara ke channel olahan
             r = v; g = v; b = v;
 
-            // EFEK KACAMATA HITAM (Saturasi)
+            // 3. EFEK KACAMATA HITAM: KONTROL KEADEMAN WARNA (SATURASI)
             if (saturation !== 1.0) {
                 r = v + (r - v) * saturation;
                 g = v + (g - v) * saturation;
                 b = v + (b - v) * saturation;
             }
 
-            // PENAJAMAN 2.5D BERWARNA (Hanya pada Garis Batas Objek)
+            // 4. PENAJAMAN TEKSTUR BERWARNA PROPORSIONAL (EFEK TIMBUL 2.5D)
             if (edgeBoost > 0) {
                 let accR = 0, accG = 0, accB = 0;
                 let kIdx = 0;
@@ -1126,22 +1127,21 @@ function applyBilateralSharpening(data, w, h) {
                         accB += bufferAsli[pixelTetanggaIdx] * kVal;
                     }
                 }
+                // Penajaman dilakukan proporsional pada intensitas cahayanya
                 r = (accR * edgeBoost) + (r * (1 - edgeBoost));
                 g = (accG * edgeBoost) + (g * (1 - edgeBoost));
                 b = (accB * edgeBoost) + (b * (1 - edgeBoost));
             }
 
-            // RE-ENGRAVING: KUNCI TOTAL DAN KEMBALIKAN KE WARNA ASLI
-            // Hitung berapa total cahaya akhir setelah diproses AI
+            // 5. COLOR RE-ENGRAVING: KUNCI MATI & KEMBALIKAN KE WARNA ASLI
             const totalCahayaAkhir = r + g + b;
 
-            // PENGUNCIAN MUTLAK: Suntikkan kembali persentase warna asli sensor kamera.
-            // AI boleh mengubah total cahayanya, tapi proporsi warnanya wajib patuh pada sensor asli.
+            // SUNTIKAN KUNCI MASSA: Kalikan total cahaya hasil olahan AI dengan rasio warna asli sensor kamera
             let finalR = totalCahayaAkhir * persenR;
             let finalG = totalCahayaAkhir * persenG;
             let finalB = totalCahayaAkhir * persenB;
 
-            // JALUR KHUSUS INFRAMERAH (Hanya aktif jika sengaja memilih mode gelap)
+            // JALUR KHUSUS INFRAMERAH (Hanya jika masuk mode gelap total)
             if (isInfraredMode && feature === "gelap") {
                 let brightness = (rAsli + gAsli + bAsli) / 3;
                 let finalLumi = Math.max(0, Math.min(255, brightness * shadowLift));
@@ -1150,7 +1150,7 @@ function applyBilateralSharpening(data, w, h) {
                 finalB = finalLumi * 0.5;  
             }
 
-            // Masukkan ke data kanvas dengan batas clipping aman
+            // Tulis hasil akhir ke kanvas dengan batas kliping aman biologis
             data[i]     = Math.max(0, Math.min(toneData.max_clipping_safety || 255, finalR));
             data[i+1]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, finalG));
             data[i+2]   = Math.max(0, Math.min(toneData.max_clipping_safety || 255, finalB));
