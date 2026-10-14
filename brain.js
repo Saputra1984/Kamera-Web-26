@@ -1521,56 +1521,92 @@ async function captureHDRBracketing(video, canvas, w, h) {
 function mergeHDRFrames(frames, w, h) {
     const n = frames.length;
     const merged = new Uint8ClampedArray(w * h * 4);
-
-    // Precompute weights per frame (indeks frame ke EV)
-    // frame[0]=-2EV, frame[1]=-1EV, frame[2]=0EV, frame[3]=+1EV, frame[4]=+2EV
-    // Yang kita butuhkan: untuk setiap pixel, cari frame mana yang paling pas
+    
+    // Frame referensi warna = frame tengah (EV 0 = index 2 untuk 5 frame)
+    const refFrameIdx = Math.floor(n / 2);
+    const refData = frames[refFrameIdx].data;
 
     for (let i = 0; i < merged.length; i += 4) {
-        let sumR = 0, sumG = 0, sumB = 0, sumW = 0;
+        let sumY = 0, sumW = 0;
 
+        // ─── 1. MERGE LUMINANCE (Y) dari semua frame ───
         for (let f = 0; f < n; f++) {
             const d = frames[f].data;
             const r = d[i];
             const g = d[i + 1];
             const b = d[i + 2];
 
-            // Luminance (Rec.709)
-            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            // Rec.709 luminance
+            const y = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-            // Weight: peak at 128, drop at extremes
-            // Kurva: w = 1 - |lum - 128| / 128, lalu dipangkatkan
-            let w;
-            if (lum < 128) {
-                w = lum / 128;
-            } else {
-                w = (255 - lum) / 127;
-            }
-            // Sharpening the weight curve — turunkan lebih agresif
-            w = w * w;  // kuadrat = kurva lebih tajam
+            // Bobot: peak di Y=128, drop di extreme
+            let weight;
+            if (y < 128) weight = y / 128;
+            else weight = (255 - y) / 127;
+            weight = weight * weight;  // kurva lebih tajam
 
-            // Kalau sangat ekstrem (blowout/crush), beri bobot 0
-            if (lum < 3 || lum > 252) w = 0;
+            // Buang frame yang blowout / crushed
+            if (y < 3 || y > 252) weight = 0;
 
-            sumR += r * w;
-            sumG += g * w;
-            sumB += b * w;
-            sumW += w;
+            sumY += y * weight;
+            sumW += weight;
         }
 
+        // Y final dari merge (fallback ke frame tengah kalau semua bobot nol)
+        let finalY;
         if (sumW > 0) {
-            merged[i]     = sumR / sumW;
-            merged[i + 1] = sumG / sumW;
-            merged[i + 2] = sumB / sumW;
+            finalY = sumY / sumW;
         } else {
-            // Fallback: pakai frame tengah (EV 0)
-            const mid = frames[Math.floor(n / 2)].data;
-            merged[i]     = mid[i];
-            merged[i + 1] = mid[i + 1];
-            merged[i + 2] = mid[i + 2];
+            const r = refData[i], g = refData[i + 1], b = refData[i + 2];
+            finalY = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         }
+
+        // ─── 2. CHROMA (CbCr) dari frame REFERENSI (EV 0) ───
+        const refR = refData[i];
+        const refG = refData[i + 1];
+        const refB = refData[i + 2];
+
+        // Konversi referensi ke YCbCr
+        const refY  = 0.2126 * refR + 0.7152 * refG + 0.0722 * refB;
+        const refCb = (refB - refY) * 0.5389;   // B-Y
+        const refCr = (refR - refY) * 0.6350;   // R-Y
+
+        // ─── 3. RECONSTRUCT: Y_final + Chroma_reference ───
+        // Balik ke RGB: R = Y + Cr/0.6350, B = Y + Cb/0.5389, G = (Y - 0.2126R - 0.0722B)/0.7152
+        let r = finalY + refCr / 0.6350;
+        let g = (finalY - 0.2126 * r - 0.0722 * (finalY + refCb / 0.5389)) / 0.7152;
+        let b = finalY + refCb / 0.5389;
+
+        // ─── 4. TONE CURVE ringan untuk "kinclong" natural ───
+        // S-curve halus: sedikit pertegas kontras tanpa ubah warna
+        // (bukan saturation boost, cuma luminance curve)
+        // Range kecil, tidak agresif
+        r = toneCurveNatural(r);
+        g = toneCurveNatural(g);
+        b = toneCurveNatural(b);
+
+        merged[i]     = r;
+        merged[i + 1] = g;
+        merged[i + 2] = b;
         merged[i + 3] = 255;
     }
 
     return merged;
+}
+
+// Tone curve natural — S-shape halus, tidak mengubah warna
+// Bikin gambar "kinclong" tanpa efek "HDR overdone"
+function toneCurveNatural(v) {
+    // Normalisasi ke 0..1
+    let x = v / 255;
+    if (x < 0) x = 0;
+    if (x > 1) x = 1;
+    
+    // S-curve: sedikti turunkan shadow, sedikit naikkan highlight
+    // Formula: y = x + k * x * (1-x) * (2x-1)
+    // k kecil (0.15) → halus, tidak agresif
+    const k = 0.15;
+    let y = x + k * x * (1 - x) * (2 * x - 1);
+    
+    return Math.max(0, Math.min(255, y * 255));
 }
