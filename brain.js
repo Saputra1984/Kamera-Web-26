@@ -14,7 +14,8 @@ const appMemory = {
     activeFeature: "normal",
     featureSliderValues: {
         normal: -0.5,
-        ketajaman: 1.0,   // FIX BUG 5: ditambahkan (sebelumnya hilang)
+        hdr_natural: 0.0,
+        ketajaman: 1.0,
         jendela: -1.5,
         kain: 1.4,
         teks: 2.2,
@@ -22,7 +23,7 @@ const appMemory = {
         malam: 1.3,
         objek: 1.0,
         zoom: 1.5,
-        default: 0.0      // FIX: agar slider default juga tersimpan
+        default: 0.0
     },
     currentRotationAngle: 0,
     timerIndex: 0,
@@ -810,9 +811,18 @@ function ambilFotoWebp() {
     canvas.width = w;
     canvas.height = h;
 
-    const config = appMemory.db.camera_features.burst_mode;
+    const config = (appMemory.activeFeature === "normal")
+        ? { frame_count: 1, interval_ms: 0 }
+        : appMemory.db.camera_features.burst_mode;
     let frameBuffer = [];
     let count = 0;
+    
+    // ⭐ Cek apakah mode HDR Natural
+    if (appMemory.activeFeature === "hdr_natural") {
+        // Panggil pipeline HDR bracketing
+        captureHDRBracketing(video, canvas, w, h);
+        return;
+    }
     
     const burst = setInterval(() => {
         if (count < config.frame_count) {
@@ -835,6 +845,34 @@ function prosesPemadatanMataManusia(buffers, w, h) {
     const ctx = canvas.getContext('2d');
     const output = ctx.createImageData(w, h);
     const data = output.data;
+
+    if (appMemory.activeFeature === "normal" && buffers.length === 1) {
+        data.set(buffers[0].data);
+        ctx.putImageData(output, 0, 0);
+        
+        // Langsung simpan tanpa filter
+        const formatTerpilih = appMemory.defaultFormatFoto || "webp";
+        let profileKey = "jpeg_hr";
+        if (formatTerpilih === "webp") profileKey = "webp_max";
+        else if (formatTerpilih === "jpeg") profileKey = "jpeg_hr";
+        else if (formatTerpilih === "png") profileKey = "png";
+        else if (formatTerpilih === "pdf") { prosesSimpanSebagaiPDF(canvas); return; }
+        
+        const profile = window.APP_DATABASE.shutter_pipeline.processing_profiles[profileKey];
+        const finalDataURL = canvas.toDataURL(profile.mime_type, profile.quality);
+        saveImageToAppGallery(finalDataURL);
+        
+        // Pulihkan tombol shutter
+        setTimeout(() => {
+            const shutterBtn = document.getElementById('shutter_btn');
+            if (shutterBtn) {
+                shutterBtn.disabled = false;
+                shutterBtn.style.pointerEvents = "auto";
+                shutterBtn.style.opacity = "1";
+            }
+        }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
+        return;
+    }
 
     const f1 = buffers[0].data;
     const f2 = buffers[1] ? buffers[1].data : f1;
@@ -1262,7 +1300,9 @@ function executeExposureStabilizer() {
                      || "natural";
     const filterWarnaAktif = appMemory.db.camera_features.color_filters[activeColor] || "";
 
-    video.style.filter = `${filterWarnaAktif} ${targetFilter}`.trim();
+    if (appMemory.activeFeature !== "hdr_natural") {
+        video.style.filter = `${filterWarnaAktif} ${targetFilter}`.trim();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1386,3 +1426,151 @@ window.addEventListener('beforeunload', () => {
         try { appMemory.mediaRecorder.stop(); } catch (e) {}
     }
 });
+
+// ═══════════════════════════════════════════════════════════
+// HDR NATURAL — Exposure Bracketing 5 Frame
+// ═══════════════════════════════════════════════════════════
+
+async function captureHDRBracketing(video, canvas, w, h) {
+    console.log("🌤️ Memulai HDR bracketing 5 frame...");
+    const t0 = performance.now();
+
+    // EV sequence
+    const evs = [-2, -1, 0, 1, 2];
+    const frames = [];
+
+    // Simpan exposure asli
+    const track = window.cameraTrack;
+    const originalEV = appMemory.currentHardwareExposure || 0;
+    const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+    const hasExposure = !!(caps.exposureCompensation);
+
+    // Delay per frame (ms) — sesuaikan dengan kecepatan hardware
+    const settleMs = hasExposure ? 250 : 80;
+
+    // Ambil frame untuk setiap EV
+    for (const ev of evs) {
+        try {
+            if (hasExposure) {
+                await track.applyConstraints({
+                    advanced: [{ exposureCompensation: ev }]
+                });
+                // Beri waktu kamera stabil
+                await new Promise(r => setTimeout(r, settleMs));
+            } else {
+                // Kalau tidak support exposure compensation, tunggu sebentar
+                await new Promise(r => setTimeout(r, settleMs));
+            }
+        } catch (e) {
+            console.warn(`[HDR] Gagal set EV ${ev}:`, e.message);
+        }
+
+        // Ambil frame
+        const temp = document.createElement('canvas');
+        temp.width = w;
+        temp.height = h;
+        const tCtx = temp.getContext('2d');
+        tCtx.drawImage(video, 0, 0, w, h);
+        const frameData = tCtx.getImageData(0, 0, w, h);
+        frames.push(frameData);
+        console.log(`  ✓ Frame EV ${ev > 0 ? '+' : ''}${ev} diambil`);
+    }
+
+    // Kembalikan exposure asli
+    if (hasExposure) {
+        try {
+            await track.applyConstraints({
+                advanced: [{ exposureCompensation: originalEV }]
+            });
+        } catch (e) { /* ignore */ }
+    }
+
+    console.log(`📸 5 frame terambil dalam ${(performance.now() - t0).toFixed(0)}ms`);
+    console.log(`🔀 Menggabungkan...`);
+
+    // Merge
+    const t1 = performance.now();
+    const merged = mergeHDRFrames(frames, w, h);
+    console.log(`✅ Merge selesai dalam ${(performance.now() - t1).toFixed(0)}ms`);
+
+    // Tulis ke canvas
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(new ImageData(merged, w, h), 0, 0);
+
+    // Simpan tanpa processing tambahan (HDR sudah selesai di merge)
+    const fmt = appMemory.defaultFormatFoto || "webp";
+    let pk = "webp_max";
+    if (fmt === "jpeg") pk = "jpeg_hr";
+    else if (fmt === "png") pk = "png";
+    else if (fmt === "pdf") { prosesSimpanSebagaiPDF(canvas); return; }
+
+    const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
+    const url = canvas.toDataURL(prof.mime_type, prof.quality);
+    saveImageToAppGallery(url);
+
+    console.log(`✅ HDR Natural selesai total: ${(performance.now() - t0).toFixed(0)}ms`);
+
+    // Pulihkan tombol
+    setTimeout(() => {
+        const sb = document.getElementById('shutter_btn');
+        if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
+    }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
+}
+
+// Merge 5 frame jadi 1 HDR
+function mergeHDRFrames(frames, w, h) {
+    const n = frames.length;
+    const merged = new Uint8ClampedArray(w * h * 4);
+
+    // Precompute weights per frame (indeks frame ke EV)
+    // frame[0]=-2EV, frame[1]=-1EV, frame[2]=0EV, frame[3]=+1EV, frame[4]=+2EV
+    // Yang kita butuhkan: untuk setiap pixel, cari frame mana yang paling pas
+
+    for (let i = 0; i < merged.length; i += 4) {
+        let sumR = 0, sumG = 0, sumB = 0, sumW = 0;
+
+        for (let f = 0; f < n; f++) {
+            const d = frames[f].data;
+            const r = d[i];
+            const g = d[i + 1];
+            const b = d[i + 2];
+
+            // Luminance (Rec.709)
+            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            // Weight: peak at 128, drop at extremes
+            // Kurva: w = 1 - |lum - 128| / 128, lalu dipangkatkan
+            let w;
+            if (lum < 128) {
+                w = lum / 128;
+            } else {
+                w = (255 - lum) / 127;
+            }
+            // Sharpening the weight curve — turunkan lebih agresif
+            w = w * w;  // kuadrat = kurva lebih tajam
+
+            // Kalau sangat ekstrem (blowout/crush), beri bobot 0
+            if (lum < 3 || lum > 252) w = 0;
+
+            sumR += r * w;
+            sumG += g * w;
+            sumB += b * w;
+            sumW += w;
+        }
+
+        if (sumW > 0) {
+            merged[i]     = sumR / sumW;
+            merged[i + 1] = sumG / sumW;
+            merged[i + 2] = sumB / sumW;
+        } else {
+            // Fallback: pakai frame tengah (EV 0)
+            const mid = frames[Math.floor(n / 2)].data;
+            merged[i]     = mid[i];
+            merged[i + 1] = mid[i + 1];
+            merged[i + 2] = mid[i + 2];
+        }
+        merged[i + 3] = 255;
+    }
+
+    return merged;
+}
