@@ -2,95 +2,116 @@
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Ai Picture</title>
-    
+
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
 
     <style>
-        /* Reset dasar untuk layar hitam penuh & pengunci gerakan */
-        * { 
-            box-sizing: border-box; 
-            margin: 0; 
-            padding: 0; 
-            -webkit-user-drag: none; /* Cegah elemen ditarik/geser tak sengaja */
+        /* Reset & dasar */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-user-drag: none;
         }
-        
-        body, html { 
-            width: 100%; 
-            height: 100%; 
-            background: #000; 
-            overflow: hidden; 
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
             font-family: sans-serif;
-            position: fixed; /* Kunci viewport total agar tidak memantul */
+            position: fixed;
+            /* FIX #3: safe area untuk notch HP */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-left: env(safe-area-inset-left);
+            padding-right: env(safe-area-inset-right);
         }
-        
-        /* Wadah Utama Viewfinder */
-        #camera-view { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
-            object-fit: cover; 
-            z-index: 1; 
+
+        /* Video kamera */
+        #camera-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
         }
-        
-        /* Elemen tombol sebagai wadah kosong (Z-index di atas kamera) */
-        .ui-element { 
-            position: absolute; 
-            z-index: 10; 
-            touch-action: none; 
-            user-select: none; 
+
+        /* Wadah tombol */
+        .ui-element {
+            position: absolute;
+            z-index: 10;
+            touch-action: none;
+            user-select: none;
             display: flex;
             align-items: center;
             justify-content: center;
             border: none;
             outline: none;
             background: transparent;
-            -webkit-tap-highlight-color: transparent; /* Hilangkan efek kedip biru saat disentuh */
+            -webkit-tap-highlight-color: transparent;
         }
 
-        /* PENGAMAN SCROLL MENU: Mengizinkan usapan jari khusus untuk area menu titik tiga */
+        /* FIX #4: styling untuk icon emoji */
+        .icon-art {
+            display: inline-block;
+            line-height: 1;
+            transition: transform 0.3s ease;
+            pointer-events: none;   /* ⭐ agar klik tetap kena parent button */
+        }
+
+        /* Menu dropdown */
         #dropdownMenu {
-            touch-action: pan-y !important; /* Izinkan scroll vertikal */
+            touch-action: pan-y !important;
             user-select: auto !important;
         }
-        
-        /* Canvas untuk pemrosesan AI di balik layar */
-        #processing-canvas { display: none; }
+
+        /* Canvas (hidden) */
+        #processing-canvas {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <video id="camera-view" autoplay playsinline muted></video>
 
-    <!-- Komponen Tombol Fisik Antarmuka -->
+    <!-- Tombol antarmuka -->
     <button id="gallery_preview" class="ui-element"><span class="icon-art">🖼️</span></button>
     <button id="shutter_btn" class="ui-element"><span class="icon-art">⚪</span></button>
-    
+
     <div id="right_actions_container" class="ui-element"></div>
-    
+
     <button id="timer_btn" class="ui-element"><span class="icon-art">⏱️</span></button>
 
-    <!-- WADAH SLIDER KIRI (Rumah fisik agar slider berada tepat di kiri tengah) -->
     <div id="left_slider_container" class="ui-element">
         <input type="range" id="expSlider">
     </div>
 
     <button id="triple_dot_btn" class="ui-element"><span class="icon-art">⋮</span></button>
-    
-    <!-- Wadah menu dropdown -->
+
     <div id="dropdownMenu" class="ui-element"></div>
 
     <canvas id="processing-canvas"></canvas>
 
-    <!-- Memuat Basis Data Terlebih Dahulu -->
+    <!-- Script utama -->
     <script src="database.js"></script>
-
-    <!-- Memuat Mesin Logika Utama -->
     <script src="brain.js"></script>
+
+    <!-- FIX #2: registrasi Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js')
+                .then(() => console.log('✅ SW aktif'))
+                .catch((e) => console.warn('SW gagal:', e.message));
+        }
+    </script>
 </body>
 </html>
