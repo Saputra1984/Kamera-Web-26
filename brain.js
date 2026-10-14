@@ -813,10 +813,7 @@ function ambilFotoWebp() {
     const config = appMemory.db.camera_features.burst_mode;
     let frameBuffer = [];
     let count = 0;
-    const z = appMemory.featureSliderValues.zoom || 1;
-
-    if (z > 1.2) appMemory.activeFeature = "zoom";
-
+    
     const burst = setInterval(() => {
         if (count < config.frame_count) {
             const temp = document.createElement('canvas');
@@ -1096,6 +1093,11 @@ function updateCanvasTransform() {
 // ═══════════════════════════════════════════════════════════════
 function applyBilateralSharpening(data, w, h) {
     const feature = appMemory.activeFeature || "normal";
+    
+    if (feature === "normal") {
+        return;
+    }
+    
     const sliderVal = appMemory.featureSliderValues[feature] !== undefined
                     ? appMemory.featureSliderValues[feature] : 1.0;
 
