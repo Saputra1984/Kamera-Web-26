@@ -277,9 +277,7 @@ window.APP_DATABASE = {
         "apply_ai_enhancement": false,
         "max_canvas_width": 1280
       },
-      // ⚠️ CATATAN #8: PDF BUKAN native canvas export.
-      // brain.js menyusun PDF manual (custom encoder). Field ini hanya
-      // dokumentasi saja — nilai mime_type TIDAK dipakai canvas.toBlob().
+
       "pdf": {
         "mime_type": "application/pdf",
         "quality": 0.85,
@@ -316,9 +314,6 @@ window.APP_DATABASE = {
     "exposure": { "current": 0, "min": -3, "max": 3, "step": 0.5 },
     "timer_options": [0, 3, 5, 10],
 
-    // ⚠️ CATATAN #6: color_filters dipakai untuk LIVE PREVIEW (via brain.js executeExposureStabilizer).
-    // ai_reconstruction_profiles dipakai untuk FOTO YANG DIJEPRET.
-    // Keduanya beda fungsi — jangan dihapus salah satu.
     "color_filters": {
       "asli":        "saturate(1.0) contrast(1.0)",
       "fokus_warna": "saturate(1.8) contrast(1.1)",
@@ -370,9 +365,6 @@ window.APP_DATABASE = {
     "gamma_correction": { "curve_exponent": 2.2 },
     "squint_reflex_mechanism": {
       "enabled": true,
-      // FIX #5: alpha 0.0 → bikin fungsi tidak berguna (skip karena kondisi `if > 0`)
-      // Set ke 0.2 untuk efek vignette halus di tepi (simulasi "menyipitkan mata")
-      // Set 0.0 kalau memang ingin mematikan efek ini
       "trigger_total_glare_pct": 0.15,
       "squint_aperture_ratio_y": 1.0,
       "center_sharpness_boost": 1.0,
@@ -420,6 +412,7 @@ window.APP_DATABASE = {
       "type": "parent_menu",
       "sub_menu": [
         { "id": "rec_normal",   "label": "📷 Mode: Normal",              "action": "setActiveFeature", "value": "normal" },
+        { "id": "rec_hdr_natural", "label": "🌤️ Mode: HDR Natural (Mata Manusia)", "action": "setActiveFeature", "value": "hdr_natural" },
         { "id": "rec_ketajaman","label": "✨ Mode: Ketajaman Ekstrem",   "action": "setActiveFeature", "value": "ketajaman" },
         { "id": "rec_jendela",  "label": "🪟 Redam Silau Jendela",       "action": "setActiveFeature", "value": "jendela" },
         { "id": "rec_kain",     "label": "👕 Redam Silau / Serat Kain",  "action": "setActiveFeature", "value": "kain" },
@@ -435,9 +428,6 @@ window.APP_DATABASE = {
   // ═══════════════════════════════════════════════════════════
   // SLIDER BOOSTER ROUTING
   // ═══════════════════════════════════════════════════════════
-  // ⚠️ CATATAN #7: registry ini dipakai brain.js untuk menentukan
-  // range slider saat fitur aktif. "default" adalah fallback kalau fitur
-  // tidak punya entry (misal mode yang tidak punya slider khusus).
   "slider_booster_routing": {
     "registry": {
 
@@ -497,8 +487,6 @@ window.APP_DATABASE = {
         "realtime_feedback_formula": "zoom_transform"
       },
 
-      // ─── Fallback: kalau fitur tidak ada di daftar atas ───
-      // brain.js akan otomatis pakai ini saat appMemory.activeFeature tidak match.
       "default": {
         "name": "Kecerahan Kamera",
         "min": -1.0, "max": 1.0, "step": 0.1, "default_value": 0.0,
@@ -511,14 +499,18 @@ window.APP_DATABASE = {
   // ═══════════════════════════════════════════════════════════
   // AI RECONSTRUCTION PROFILES
   // ═══════════════════════════════════════════════════════════
-  // ⚠️ Dipakai saat foto DIJEPRET (bukan live preview).
-  // Lihat "color_filters" untuk live preview.
   "ai_reconstruction_profiles": {
     "normal": {
       "glare_threshold": 220,
       "shadow_lift": 1.0,
       "edge_boost_multiplier": 0.5,
       "saturation": 1.0
+    },
+    "hdr_natural": {
+        "glare_threshold": 240,
+        "shadow_lift": 1.0,
+        "edge_boost_multiplier": 0.0,   // TIDAK ada penajaman
+        "saturation": 1.0               // TIDAK ada boost warna
     },
     "natural": {
       "glare_threshold": 250,
@@ -568,8 +560,6 @@ window.APP_DATABASE = {
       "edge_boost_multiplier": 1.5,
       "saturation": 1.0
     },
-    // FIX: tambahkan "ketajaman" yang hilang dari database
-    // (di menu ada "✨ Ketajaman Ekstrem" tapi tidak ada profil)
     "ketajaman": {
       "glare_threshold": 225,
       "shadow_lift": 1.05,
