@@ -521,10 +521,10 @@ window.APP_DATABASE = {
       "saturation": 1.0
     },
     "natural": {
-      "glare_threshold": 245,
-      "shadow_lift": 1.15,
-      "edge_boost_multiplier": 0.3,
-      "saturation": 0.95
+      "glare_threshold": 250,
+      "shadow_lift": 1.05,
+      "edge_boost_multiplier": 0.5,
+      "saturation": 1.08
     },
     "kain": {
       "glare_threshold": 190,
