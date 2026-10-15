@@ -1,9 +1,11 @@
-const CACHE_NAME = 'ai-picture-v1'; // Anda bisa naikkan ke v2, v3, dst.
+const CACHE_NAME = 'ai-picture-v2'; // Anda bisa naikkan ke v2, v3, dst.
 const ASSETS = [
     './',
     './index.html',
     './brain.js',
     './database.js',
+    './hdr_align.js',
+    './hdr_align.wasm',
     './manifest.json'
 ];
 
