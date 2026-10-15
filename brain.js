@@ -814,23 +814,23 @@ function ambilFotoWebp() {
     const config = (appMemory.activeFeature === "normal")
         ? { frame_count: 1, interval_ms: 0 }
         : appMemory.db.camera_features.burst_mode;
+
     let frameBuffer = [];
     let count = 0;
-    
-    // ⭐ Cek apakah mode HDR Natural
+
+    // ⭐ Mode HDR Natural — pipeline terpisah
     if (appMemory.activeFeature === "hdr_natural") {
-        // Panggil pipeline HDR bracketing
         captureHDRBracketing(video, canvas, w, h);
         return;
     }
-    
+
     const burst = setInterval(() => {
         if (count < config.frame_count) {
             const temp = document.createElement('canvas');
             temp.width = w;
             temp.height = h;
             const tCtx = temp.getContext('2d');
-            tCtx.drawImage(video, (w - w/z)/2, (h - h/z)/2, w/z, h/z, 0, 0, w, h);
+            tCtx.drawImage(video, 0, 0, w, h);
             frameBuffer.push(tCtx.getImageData(0, 0, w, h));
             count++;
         } else {
