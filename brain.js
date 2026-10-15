@@ -1,6 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
 // STATE GLOBAL
-// ═══════════════════════════════════════════════════════════════
 const appMemory = {
     db: null,
     stream: null,
@@ -34,9 +32,7 @@ const appMemory = {
 
 let currentBoosterMode = "default";
 
-// ═══════════════════════════════════════════════════════════════
 // INIT
-// ═══════════════════════════════════════════════════════════════
 document.addEventListener("DOMContentLoaded", () => {
     if (window.APP_DATABASE) {
         appMemory.db = window.APP_DATABASE;
@@ -45,13 +41,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const dbSettings = appMemory.db.app_config.settings;
         if (dbSettings && dbSettings.default_format_foto) {
             let fmt = dbSettings.default_format_foto;
-            // "webp_max" → "webp" (karena di brain pakai base name)
             if (fmt === "webp_max") fmt = "webp";
             if (fmt === "jpeg_hr") fmt = "jpeg";
             appMemory.defaultFormatFoto = fmt;
         }
 
-        // FIX: sinkronkan facing mode
+        // Sinkronkan facing mode
         if (dbSettings && dbSettings.default_facing) {
             appMemory.currentFacingMode = dbSettings.default_facing;
         }
@@ -69,11 +64,9 @@ function initApp() {
         window.addEventListener('deviceorientation', handleOrientationChange, true);
     }
 
-    // FIX BUG 8: handler back button HP
     history.pushState({ app: 'main' }, '');
     window.addEventListener('popstate', handleBackButton);
 
-    // FIX BUG 9: reaksi saat tab berpindah / HP sleep
     document.addEventListener('visibilitychange', () => {
         if (document.hidden && appMemory.isRecording) {
             console.warn("[Video] Halaman disembunyikan — menghentikan rekaman otomatis");
@@ -86,9 +79,7 @@ function initApp() {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════
 // APPLY BLUEPRINT UI
-// ═══════════════════════════════════════════════════════════════
 function applyBlueprintUI() {
     const blueprint = appMemory.db.navigation_buttons;
 
@@ -167,9 +158,7 @@ function renderRightContainerButtons(config) {
     });
 }
 
-// ═══════════════════════════════════════════════════════════════
 // ORIENTATION HANDLING (FIX BUG 10: throttle)
-// ═══════════════════════════════════════════════════════════════
 function handleOrientationChange(event) {
     if (appMemory.orientationThrottleTimer) return;
     appMemory.orientationThrottleTimer = setTimeout(() => {
@@ -244,9 +233,7 @@ function executeRotationBlueprint(angle) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // MENU DROPDOWN
-// ═══════════════════════════════════════════════════════════════
 function renderDropdownMenuItems() {
     const menuContainer = document.getElementById('dropdownMenu');
     if (!menuContainer || !appMemory.db.menu_titik_tiga) return;
@@ -309,9 +296,7 @@ function styleMenuItem(btn) {
     btn.style.width = '100%';
 }
 
-// ═══════════════════════════════════════════════════════════════
 // EVENT LISTENERS
-// ═══════════════════════════════════════════════════════════════
 function setupEventListeners() {
     const blueprint = appMemory.db.navigation_buttons;
 
@@ -381,9 +366,7 @@ function setupEventListeners() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // SLIDER BOOSTER
-// ═══════════════════════════════════════════════════════════════
 function switchSliderBooster(modeName) {
     const registry = appMemory.db.slider_booster_routing.registry;
     if (!registry[modeName]) modeName = "default";
@@ -453,11 +436,8 @@ function applyBoosterEffect(value) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // CAMERA DRIVER
-// ═══════════════════════════════════════════════════════════════
 function startCamera(needsAudio = false) {
-    // FIX BUG 4: reset cameraTrack sebelum buat stream baru
     window.cameraTrack = null;
 
     if (appMemory.stream) {
@@ -546,9 +526,7 @@ function applyHardwareExposure() {
     }).catch(err => console.warn("[Hardware] Exposure gagal:", err.message));
 }
 
-// ═══════════════════════════════════════════════════════════════
 // CAPTURE FLOW
-// ═══════════════════════════════════════════════════════════════
 function executeCapture() {
     const mode = appMemory.currentMode || "foto";
     if (mode === "video") {
@@ -685,9 +663,7 @@ function handleVideoRecordingLogic() {
     appMemory.mediaRecorder.start(1000);
 }
 
-// ═══════════════════════════════════════════════════════════════
 // ACTION DISPATCHER
-// ═══════════════════════════════════════════════════════════════
 function executeAction(actionName, value) {
     console.log(`Aksi: ${actionName}`, value);
     const shutterBtn = document.getElementById('shutter_btn');
@@ -782,9 +758,7 @@ function executeAction(actionName, value) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // PHOTO CAPTURE
-// ═══════════════════════════════════════════════════════════════
 function ambilFotoWebp() {
     const video = document.getElementById('camera-view');
     const canvas = document.getElementById('processing-canvas');
@@ -966,9 +940,7 @@ function saveImageToAppGallery(finalDataURL) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // VIEWER (Galeri)
-// ═══════════════════════════════════════════════════════════════
 let viewerState = {
     isViewerOpen: false,
     scale: 1,
@@ -1029,7 +1001,6 @@ function tutupGaleriSistem() {
     setUICameraVisible(true);
 }
 
-// FIX BUG 6: helper sembunyikan/tampilkan UI
 function setUICameraVisible(visible) {
     const ids = ['gallery_preview', 'shutter_btn', 'right_actions_container',
                  'timer_btn', 'left_slider_container', 'triple_dot_btn'];
@@ -1126,9 +1097,7 @@ function updateCanvasTransform() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // AI SHARPENING
-// ═══════════════════════════════════════════════════════════════
 function applyBilateralSharpening(data, w, h) {
     const feature = appMemory.activeFeature || "normal";
     
@@ -1199,7 +1168,7 @@ function applyBilateralSharpening(data, w, h) {
             }
 
             if (doKernel) {
-                // FIX: inline kernel (tanpa nested array access) untuk kecepatan
+                // Inline kernel (tanpa nested array access) untuk kecepatan
                 const up = ((y - 1) * w + x) * 4;
                 const down = ((y + 1) * w + x) * 4;
                 const left = (rowBase + x - 1) * 4;
@@ -1253,9 +1222,7 @@ function applySquintReflex(canvas, w, h) {
     ctx.fillRect(0, 0, w, h);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// AUTO EXPOSURE STABILIZER (FIX BUG 1: sekarang benar-benar dipanggil)
-// ═══════════════════════════════════════════════════════════════
+// AUTO EXPOSURE STABILIZER
 function startExposureStabilizer() {
     stopExposureStabilizer();
     const interval = appMemory.db.auto_exposure_stabilizer.analysis_interval_ms || 200;
@@ -1305,9 +1272,7 @@ function executeExposureStabilizer() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // HARDWARE FOCUS & ZOOM
-// ═══════════════════════════════════════════════════════════════
 function triggerHardwareFocus(relativeX, relativeY) {
     if (!window.cameraTrack) return;
     if (typeof window.cameraTrack.getCapabilities !== "function") return;
@@ -1341,9 +1306,7 @@ function applyDigitalZoom(zoomLevel) {
     videoView.style.transform = `scale(${scale})`;
 }
 
-// ═══════════════════════════════════════════════════════════════
 // PDF EXPORT
-// ═══════════════════════════════════════════════════════════════
 function prosesSimpanSebagaiPDF(canvas) {
     const imgDataUrl = canvas.toDataURL("image/jpeg", 0.85);
 
@@ -1392,9 +1355,7 @@ function prosesSimpanSebagaiPDF(canvas) {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
 // BACK BUTTON HANDLER (FIX BUG 8)
-// ═══════════════════════════════════════════════════════════════
 function handleBackButton() {
     const menu = document.getElementById('dropdownMenu');
     const menuOpen = menu && menu.style.display === 'block';
@@ -1411,12 +1372,9 @@ function handleBackButton() {
         return;
     }
 
-    // else: biarkan user keluar dari app
 }
 
-// ═══════════════════════════════════════════════════════════════
 // CLEANUP
-// ═══════════════════════════════════════════════════════════════
 window.addEventListener('beforeunload', () => {
     stopExposureStabilizer();
     if (appMemory.stream) {
@@ -1427,10 +1385,7 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-// ═══════════════════════════════════════════════════════════
 // HDR NATURAL — Exposure Bracketing 5 Frame
-// ═══════════════════════════════════════════════════════════
-
 async function captureHDRBracketing(video, canvas, w, h) {
     console.log("🌤️ Memulai HDR bracketing 5 frame...");
     const t0 = performance.now();
@@ -1445,7 +1400,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     const caps = track && track.getCapabilities ? track.getCapabilities() : {};
     const hasExposure = !!(caps.exposureCompensation);
 
-    // Delay per frame (ms) — sesuaikan dengan kecepatan hardware
     const settleMs = hasExposure ? 250 : 80;
 
     // Ambil frame untuk setiap EV
@@ -1455,10 +1409,8 @@ async function captureHDRBracketing(video, canvas, w, h) {
                 await track.applyConstraints({
                     advanced: [{ exposureCompensation: ev }]
                 });
-                // Beri waktu kamera stabil
                 await new Promise(r => setTimeout(r, settleMs));
             } else {
-                // Kalau tidak support exposure compensation, tunggu sebentar
                 await new Promise(r => setTimeout(r, settleMs));
             }
         } catch (e) {
@@ -1496,7 +1448,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     // Tulis ke canvas
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(merged, w, h), 0, 0);
-    // Simpan tanpa processing tambahan (HDR sudah selesai di merge)
     const fmt = appMemory.defaultFormatFoto || "webp";
     let pk = "webp_max";
     if (fmt === "jpeg") pk = "jpeg_hr";
@@ -1537,8 +1488,6 @@ function mergeHDRFrames(frames, w, h) {
     for (let p = 0, i = 0; p < w * h; p++, i += 4) {
         const baseY = yArrays[baseIdx][p];
         
-        // Cari frame terbaik untuk pixel ini berdasarkan luminance
-        // "Best" = Y paling dekat ke 128 (mid-tone)
         let chosenIdx = baseIdx;
         let chosenDist = Math.abs(baseY - 128);
         
@@ -1546,9 +1495,6 @@ function mergeHDRFrames(frames, w, h) {
             if (f === baseIdx) continue;
             const fY = yArrays[f][p];
             
-            // Frame ini relevan kalau baseY terlalu ekstrem
-            // (blowout: baseY > 240 → cari frame yang lebih gelap)
-            // (crush: baseY < 20 → cari frame yang lebih terang)
             let relevant = false;
             
             if (baseY > 235 && fY < baseY - 10) relevant = true;   // base blowout, frame lebih gelap
@@ -1563,7 +1509,6 @@ function mergeHDRFrames(frames, w, h) {
             }
         }
         
-        // Ambil RGB dari frame terpilih (tidak di-average!)
         const d = frames[chosenIdx].data;
         let r = d[i];
         let g = d[i+1];
@@ -1588,6 +1533,7 @@ function mergeHDRFrames(frames, w, h) {
         merged[i + 2] = Math.max(0, Math.min(255, b));
         merged[i + 3] = 255;
     }
+    chromaDenoiseShadow(merged, w, h);
 
     return merged;
 }
@@ -1597,7 +1543,7 @@ function toneCurveNatural(v) {
     if (x < 0) x = 0;
     if (x > 1) x = 1;
 
-    const k = 0.15;   // ⭐ diturunkan → tidak over-contrast
+    const k = 0.15;
     const y = x + k * x * (1 - x) * (2 * x - 1);
     return Math.max(0, Math.min(255, y * 255));
 }
@@ -1607,13 +1553,13 @@ function vibrancePerPixel(r, g, b) {
 
     const maxV = Math.max(r, g, b);
     const minV = Math.min(r, g, b);
-    const chroma = maxV - minV;   // 0 = abu-abu, 255 = warna jenuh
+    const chroma = maxV - minV;
 
     // Boost: maksimum 1.18 di chroma rendah, turun ke 1.0 di chroma tinggi
     const chromaRatio = chroma / 255;             // 0..1
     const boost = 1 + 0.18 * Math.pow(1 - chromaRatio, 2);
 
-    // Terapkan boost di sekitar luminance (preserve luminance)
+    // Boost di sekitar luminance (preserve luminance)
     const newR = lum + (r - lum) * boost;
     const newG = lum + (g - lum) * boost;
     const newB = lum + (b - lum) * boost;
@@ -1623,4 +1569,62 @@ function vibrancePerPixel(r, g, b) {
         g: Math.max(0, Math.min(255, newG)),
         b: Math.max(0, Math.min(255, newB))
     };
+}
+
+function chromaDenoiseShadow(data, w, h) {
+    // Buffer untuk hasil
+    const out = new Uint8ClampedArray(data);
+
+    const EDGE_THRESHOLD = 25;
+    const DARK_LIMIT = 110;
+
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            const i = (y * w + x) * 4;
+            const r = data[i];
+            const g = data[i + 1];
+            const b = data[i + 2];
+
+            const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            // Skip area terang
+            if (lum >= DARK_LIMIT) continue;
+
+            // Ambil 4 tetangga
+            const iUp    = ((y - 1) * w + x) * 4;
+            const iDown  = ((y + 1) * w + x) * 4;
+            const iLeft  = (y * w + (x - 1)) * 4;
+            const iRight = (y * w + (x + 1)) * 4;
+
+            const lumUp    = 0.2126 * data[iUp] + 0.7152 * data[iUp + 1] + 0.0722 * data[iUp + 2];
+            const lumDown  = 0.2126 * data[iDown] + 0.7152 * data[iDown + 1] + 0.0722 * data[iDown + 2];
+            const lumLeft  = 0.2126 * data[iLeft] + 0.7152 * data[iLeft + 1] + 0.0722 * data[iLeft + 2];
+            const lumRight = 0.2126 * data[iRight] + 0.7152 * data[iRight + 1] + 0.0722 * data[iRight + 2];
+
+            const diffUp    = Math.abs(lum - lumUp);
+            const diffDown  = Math.abs(lum - lumDown);
+            const diffLeft  = Math.abs(lum - lumLeft);
+            const diffRight = Math.abs(lum - lumRight);
+
+            const isEdge = diffUp > EDGE_THRESHOLD || diffDown > EDGE_THRESHOLD ||
+                           diffLeft > EDGE_THRESHOLD || diffRight > EDGE_THRESHOLD;
+
+            if (isEdge) {
+                out[i]     = r * 0.7 + (data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 4 * 0.3;
+                out[i + 1] = g * 0.7 + (data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 4 * 0.3;
+                out[i + 2] = b * 0.7 + (data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 4 * 0.3;
+            } else {
+                const avgR = (r + data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 5;
+                const avgG = (g + data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 5;
+                const avgB = (b + data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 5;
+
+                // Campur: 60% pixel asli (jaga detail) + 40% average
+                out[i]     = r * 0.6 + avgR * 0.4;
+                out[i + 1] = g * 0.6 + avgG * 0.4;
+                out[i + 2] = b * 0.6 + avgB * 0.4;
+            }
+        }
+    }
+
+    data.set(out);
 }
