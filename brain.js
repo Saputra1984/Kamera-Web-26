@@ -1496,7 +1496,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     // Tulis ke canvas
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(merged, w, h), 0, 0);
-
     // Simpan tanpa processing tambahan (HDR sudah selesai di merge)
     const fmt = appMemory.defaultFormatFoto || "webp";
     let pk = "webp_max";
@@ -1517,7 +1516,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
 }
 
-// Merge 5 frame jadi 1 HDR
 function mergeHDRFrames(frames, w, h) {
     const n = frames.length;
     const merged = new Uint8ClampedArray(w * h * 4);
@@ -1527,92 +1525,105 @@ function mergeHDRFrames(frames, w, h) {
     for (let i = 0; i < merged.length; i += 4) {
         let sumY = 0, sumW = 0;
 
-        // 1. MERGE LUMINANCE
+        // ─── 1. MERGE LUMINANCE dari semua frame ───
         for (let f = 0; f < n; f++) {
             const d = frames[f].data;
-            const y = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+            const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+
             let weight;
             if (y < 128) weight = y / 128;
             else weight = (255 - y) / 127;
-            weight = weight * weight;
-            if (y < 3 || y > 252) weight = 0;
+            weight = weight * weight;         // kurva tajam
+            if (y < 3 || y > 252) weight = 0; // buang blowout/crushed
+
             sumY += y * weight;
             sumW += weight;
         }
 
         let finalY;
-        if (sumW > 0) finalY = sumY / sumW;
-        else {
-            const r = refData[i], g = refData[i+1], b = refData[i+2];
+        if (sumW > 0) {
+            finalY = sumY / sumW;
+        } else {
+            // Fallback: pakai frame tengah
+            const r = refData[i], g = refData[i + 1], b = refData[i + 2];
             finalY = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         }
 
-        // 2. CHROMA dari frame referensi
+        // ─── 2. CHROMA dari frame referensi (EV 0) ───
         const refR = refData[i];
-        const refG = refData[i+1];
-        const refB = refData[i+2];
+        const refG = refData[i + 1];
+        const refB = refData[i + 2];
         const refY = 0.2126 * refR + 0.7152 * refG + 0.0722 * refB;
         const refCb = (refB - refY) * 0.5389;
         const refCr = (refR - refY) * 0.6350;
 
-        // 3. RECONSTRUCT RGB
+        // ─── 3. RECONSTRUCT RGB dari Y_final + chroma_reference ───
         let r = finalY + refCr / 0.6350;
-        let g = (finalY - 0.2126 * r - 0.0722 * (finalY + refCb / 0.5389)) / 0.7152;
         let b = finalY + refCb / 0.5389;
+        let g = (finalY - 0.2126 * r - 0.0722 * b) / 0.7152;
 
-        // 4. TONE CURVE halus (S-curve untuk "kinclong")
-        r = toneCurveNatural(r);
-        g = toneCurveNatural(g);
-        b = toneCurveNatural(b);
-
-        // 5. VIBRANCE — boost warna kurang saturated saja
-        const v = vibranceColorScience(r, g, b);
-        r = v.r; g = v.g; b = v.b;
-
-        // 6. SHADOW CHROMA LIFT — di area gelap, warna diangkat sedikit
-        // (bikin warna keluar dari bayangan tanpa bikin gambar terang)
-        const finalLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (finalLum < 90) {
-            const liftFactor = 1 + (0.15 * (1 - finalLum / 90));
-            r = r * liftFactor + (finalLum - finalLum * liftFactor) * 0.3;
-            g = g * liftFactor + (finalLum - finalLum * liftFactor) * 0.3;
-            b = b * liftFactor + (finalLum - finalLum * liftFactor) * 0.3;
+        // ─── 4. TONE CURVE — hanya luminance yang diubah ───
+        // ⭐ FIX: sebelumnya di-apply per-channel → muncul garis tepi warna
+        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (lum > 1) {
+            const newLum = toneCurveNatural(lum);
+            const factor = newLum / lum;
+            r *= factor;
+            g *= factor;
+            b *= factor;
         }
 
+        // ─── 5. SHADOW CHROMA LIFT — sederhana & konsisten ───
+        // ⭐ FIX: formula lama ada suku negatif yang bikin warna aneh
+        const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (midLum < 90 && midLum > 0) {
+            const lift = 1 + 0.12 * (1 - midLum / 90);
+            r *= lift;
+            g *= lift;
+            b *= lift;
+        }
+
+        // ─── 6. VIBRANCE — luminance-preserving, boost warna pucat ───
+        const vib = vibrancePerPixel(r, g, b);
+        r = vib.r;
+        g = vib.g;
+        b = vib.b;
+
+        // ─── 7. CLAMP & simpan ───
         merged[i]     = Math.max(0, Math.min(255, r));
-        merged[i+1]   = Math.max(0, Math.min(255, g));
-        merged[i+2]   = Math.max(0, Math.min(255, b));
-        merged[i+3]   = 255;
+        merged[i + 1] = Math.max(0, Math.min(255, g));
+        merged[i + 2] = Math.max(0, Math.min(255, b));
+        merged[i + 3] = 255;
     }
 
     return merged;
 }
 
-// Tone curve S-shape halus
 function toneCurveNatural(v) {
     let x = v / 255;
     if (x < 0) x = 0;
     if (x > 1) x = 1;
-    const k = 0.20;
-    let y = x + k * x * (1 - x) * (2 * x - 1);
+
+    const k = 0.15;   // ⭐ diturunkan → tidak over-contrast
+    const y = x + k * x * (1 - x) * (2 * x - 1);
     return Math.max(0, Math.min(255, y * 255));
 }
 
-// VIBRANCE — boost warna kurang saturated, biarkan warna cerah tetap
-function vibranceColorScience(r, g, b) {
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const avg = (r + g + b) / 3;
-    const sat = max - min;   // 0 = gray, 255 = full saturated
+function vibrancePerPixel(r, g, b) {
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
 
-    // Boost lebih tinggi di warna yang KURANG saturated
-    // Range: 1.0 (warna cerah) sampai 1.25 (warna pucat)
-    const boost = 1 + 0.25 * Math.pow(1 - sat / 255, 1.5);
+    const maxV = Math.max(r, g, b);
+    const minV = Math.min(r, g, b);
+    const chroma = maxV - minV;   // 0 = abu-abu, 255 = warna jenuh
 
-    // Apply ke channel tanpa ubah luminance
-    const newR = avg + (r - avg) * boost;
-    const newG = avg + (g - avg) * boost;
-    const newB = avg + (b - avg) * boost;
+    // Boost: maksimum 1.18 di chroma rendah, turun ke 1.0 di chroma tinggi
+    const chromaRatio = chroma / 255;             // 0..1
+    const boost = 1 + 0.18 * Math.pow(1 - chromaRatio, 2);
+
+    // Terapkan boost di sekitar luminance (preserve luminance)
+    const newR = lum + (r - lum) * boost;
+    const newG = lum + (g - lum) * boost;
+    const newB = lum + (b - lum) * boost;
 
     return {
         r: Math.max(0, Math.min(255, newR)),
