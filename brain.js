@@ -1390,17 +1390,28 @@ async function captureHDRBracketing(video, canvas, w, h) {
     console.log("🌤️ Memulai HDR bracketing 5 frame...");
     const t0 = performance.now();
 
-    // EV sequence
-    const evs = [-2, -1, 0, 1, 2];
-    const frames = [];
+    // ⭐ Matikan auto-stabilizer selama bracketing
+    stopExposureStabilizer();
 
-    // Simpan exposure asli
+    // Simpan referensi track (SEKALI SAJA)
     const track = window.cameraTrack;
     const originalEV = appMemory.currentHardwareExposure || 0;
     const caps = track && track.getCapabilities ? track.getCapabilities() : {};
     const hasExposure = !!(caps.exposureCompensation);
 
-    const settleMs = hasExposure ? 250 : 80;
+    // Reset ke EV 0 dulu supaya konsisten
+    if (hasExposure) {
+        try {
+            await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] });
+            await new Promise(r => setTimeout(r, 400));
+        } catch (e) { /* ignore */ }
+    }
+
+    // EV sequence
+    const evs = [-2, -1, 0, 1, 2];
+    const frames = [];
+
+    const settleMs = hasExposure ? 350 : 100;
 
     // Ambil frame untuk setiap EV
     for (const ev of evs) {
@@ -1409,10 +1420,8 @@ async function captureHDRBracketing(video, canvas, w, h) {
                 await track.applyConstraints({
                     advanced: [{ exposureCompensation: ev }]
                 });
-                await new Promise(r => setTimeout(r, settleMs));
-            } else {
-                await new Promise(r => setTimeout(r, settleMs));
             }
+            await new Promise(r => setTimeout(r, settleMs));
         } catch (e) {
             console.warn(`[HDR] Gagal set EV ${ev}:`, e.message);
         }
@@ -1423,8 +1432,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         temp.height = h;
         const tCtx = temp.getContext('2d');
         tCtx.drawImage(video, 0, 0, w, h);
-        const frameData = tCtx.getImageData(0, 0, w, h);
-        frames.push(frameData);
+        frames.push(tCtx.getImageData(0, 0, w, h));
         console.log(`  ✓ Frame EV ${ev > 0 ? '+' : ''}${ev} diambil`);
     }
 
@@ -1440,6 +1448,14 @@ async function captureHDRBracketing(video, canvas, w, h) {
     console.log(`📸 5 frame terambil dalam ${(performance.now() - t0).toFixed(0)}ms`);
     console.log(`🔀 Menggabungkan...`);
 
+    // Pre-denoise setiap frame
+    console.log(`🧹 Pre-denoise ${frames.length} frame...`);
+    const tPre = performance.now();
+    for (let i = 0; i < frames.length; i++) {
+        chromaDenoiseFrame(frames[i], w, h, 0.6);
+    }
+    console.log(`✅ Pre-denoise selesai: ${(performance.now() - tPre).toFixed(0)}ms`);
+
     // Merge
     const t1 = performance.now();
     const merged = mergeHDRFrames(frames, w, h);
@@ -1448,73 +1464,83 @@ async function captureHDRBracketing(video, canvas, w, h) {
     // Tulis ke canvas
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(merged, w, h), 0, 0);
+
+    // Simpan dengan format yang dipilih
     const fmt = appMemory.defaultFormatFoto || "webp";
     let pk = "webp_max";
     if (fmt === "jpeg") pk = "jpeg_hr";
     else if (fmt === "png") pk = "png";
-    else if (fmt === "pdf") { prosesSimpanSebagaiPDF(canvas); return; }
+    else if (fmt === "pdf") pk = "pdf";
 
-    const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
-    const url = canvas.toDataURL(prof.mime_type, prof.quality);
-    saveImageToAppGallery(url);
+    if (fmt === "pdf") {
+        // ⭐ Tidak pakai `return` — biar cleanup tetap jalan
+        prosesSimpanSebagaiPDF(canvas);
+    } else {
+        const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
+        const url = canvas.toDataURL(prof.mime_type, prof.quality);
+        saveImageToAppGallery(url);
+    }
 
     console.log(`✅ HDR Natural selesai total: ${(performance.now() - t0).toFixed(0)}ms`);
 
-    // Pulihkan tombol
+    // ⭐ Cleanup: nyalakan stabilizer + pulihkan tombol
+    startExposureStabilizer();
+
     setTimeout(() => {
         const sb = document.getElementById('shutter_btn');
-        if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
+        if (sb) {
+            sb.disabled = false;
+            sb.style.pointerEvents = "auto";
+            sb.style.opacity = "1";
+        }
     }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
 }
 
 function mergeHDRFrames(frames, w, h) {
     const n = frames.length;
     const merged = new Uint8ClampedArray(w * h * 4);
-    
-    // EV 0 = index tengah
     const baseIdx = Math.floor(n / 2);
     const baseData = frames[baseIdx].data;
-    
+
     // Precompute Y untuk semua frame
     const yArrays = frames.map(f => {
         const d = f.data;
         const out = new Uint8ClampedArray(w * h);
         for (let p = 0, i = 0; p < w * h; p++, i += 4) {
-            out[p] = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+            out[p] = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
         }
         return out;
     });
 
     for (let p = 0, i = 0; p < w * h; p++, i += 4) {
         const baseY = yArrays[baseIdx][p];
-        
         let chosenIdx = baseIdx;
         let chosenDist = Math.abs(baseY - 128);
-        
+
         for (let f = 0; f < n; f++) {
             if (f === baseIdx) continue;
             const fY = yArrays[f][p];
-            
+
             let relevant = false;
-            
-            if (baseY > 235 && fY < baseY - 10) relevant = true;   // base blowout, frame lebih gelap
-            if (baseY < 20 && fY > baseY + 10) relevant = true;    // base crushed, frame lebih terang
-            
+            // ⭐ Threshold diperlonggar
+            if (baseY > 215 && fY < baseY - 10) relevant = true;
+            if (baseY < 35 && fY > baseY + 10) relevant = true;
+
             if (!relevant) continue;
-            
+
             const fDist = Math.abs(fY - 128);
             if (fDist < chosenDist) {
                 chosenDist = fDist;
                 chosenIdx = f;
             }
         }
-        
+
         const d = frames[chosenIdx].data;
         let r = d[i];
-        let g = d[i+1];
-        let b = d[i+2];
-        
-        // Tone curve halus pada luminance (preserve chroma)
+        let g = d[i + 1];
+        let b = d[i + 2];
+
+        // Tone curve halus pada luminance
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lum > 1) {
             const newLum = toneCurveNatural(lum);
@@ -1523,16 +1549,32 @@ function mergeHDRFrames(frames, w, h) {
             g *= factor;
             b *= factor;
         }
-        
-        // Vibrance lembut
-        const vib = vibrancePerPixel(r, g, b);
-        r = vib.r; g = vib.g; b = vib.b;
-        
+
+        // ⭐ Shadow chroma lift halus
+        const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (midLum < 80 && midLum > 0) {
+            const lift = 1 + 0.08 * (1 - midLum / 80);
+            r *= lift;
+            g *= lift;
+            b *= lift;
+        }
+
+        // ⭐ Vibrance hanya di area terang/mid
+        const lumNow = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (lumNow > 60) {
+            const vib = vibrancePerPixel(r, g, b);
+            r = vib.r;
+            g = vib.g;
+            b = vib.b;
+        }
+
         merged[i]     = Math.max(0, Math.min(255, r));
         merged[i + 1] = Math.max(0, Math.min(255, g));
         merged[i + 2] = Math.max(0, Math.min(255, b));
         merged[i + 3] = 255;
     }
+
+    // Post-denoise chroma di area gelap
     chromaDenoiseShadow(merged, w, h);
 
     return merged;
@@ -1572,25 +1614,18 @@ function vibrancePerPixel(r, g, b) {
 }
 
 function chromaDenoiseShadow(data, w, h) {
-    // Buffer untuk hasil
     const out = new Uint8ClampedArray(data);
-
     const EDGE_THRESHOLD = 25;
-    const DARK_LIMIT = 110;
+    const DARK_LIMIT = 130;
 
     for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
             const i = (y * w + x) * 4;
-            const r = data[i];
-            const g = data[i + 1];
-            const b = data[i + 2];
+            const r = data[i], g = data[i + 1], b = data[i + 2];
 
             const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
-            // Skip area terang
             if (lum >= DARK_LIMIT) continue;
 
-            // Ambil 4 tetangga
             const iUp    = ((y - 1) * w + x) * 4;
             const iDown  = ((y + 1) * w + x) * 4;
             const iLeft  = (y * w + (x - 1)) * 4;
@@ -1601,30 +1636,83 @@ function chromaDenoiseShadow(data, w, h) {
             const lumLeft  = 0.2126 * data[iLeft] + 0.7152 * data[iLeft + 1] + 0.0722 * data[iLeft + 2];
             const lumRight = 0.2126 * data[iRight] + 0.7152 * data[iRight + 1] + 0.0722 * data[iRight + 2];
 
-            const diffUp    = Math.abs(lum - lumUp);
-            const diffDown  = Math.abs(lum - lumDown);
-            const diffLeft  = Math.abs(lum - lumLeft);
-            const diffRight = Math.abs(lum - lumRight);
+            const isEdge = Math.abs(lum - lumUp) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumDown) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumLeft) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumRight) > EDGE_THRESHOLD;
 
-            const isEdge = diffUp > EDGE_THRESHOLD || diffDown > EDGE_THRESHOLD ||
-                           diffLeft > EDGE_THRESHOLD || diffRight > EDGE_THRESHOLD;
+            // Adaptive: makin gelap, makin kuat
+            const depthFactor = 1 - (lum / DARK_LIMIT);   // 0 (terang) .. 1 (sangat gelap)
 
             if (isEdge) {
-                out[i]     = r * 0.7 + (data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 4 * 0.3;
-                out[i + 1] = g * 0.7 + (data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 4 * 0.3;
-                out[i + 2] = b * 0.7 + (data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 4 * 0.3;
+                const s = 0.3 + 0.3 * depthFactor;
+                out[i]     = r * (1 - s) + (data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 4 * s;
+                out[i + 1] = g * (1 - s) + (data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 4 * s;
+                out[i + 2] = b * (1 - s) + (data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 4 * s;
             } else {
+                // ⭐ Kuat: 0.4 → 0.6 di area sangat gelap
+                const s = 0.4 + 0.25 * depthFactor;
                 const avgR = (r + data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 5;
                 const avgG = (g + data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 5;
                 const avgB = (b + data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 5;
 
-                // Campur: 60% pixel asli (jaga detail) + 40% average
-                out[i]     = r * 0.6 + avgR * 0.4;
-                out[i + 1] = g * 0.6 + avgG * 0.4;
-                out[i + 2] = b * 0.6 + avgB * 0.4;
+                out[i]     = r * (1 - s) + avgR * s;
+                out[i + 1] = g * (1 - s) + avgG * s;
+                out[i + 2] = b * (1 - s) + avgB * s;
             }
         }
     }
 
     data.set(out);
+}
+
+function chromaDenoiseFrame(frameData, w, h, strength) {
+    if (!strength) strength = 0.5;
+    const data = frameData.data;
+    const out = new Uint8ClampedArray(data);
+
+    const EDGE_THRESHOLD = 20;
+
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            const i = (y * w + x) * 4;
+
+            const iUp    = ((y - 1) * w + x) * 4;
+            const iDown  = ((y + 1) * w + x) * 4;
+            const iLeft  = (y * w + (x - 1)) * 4;
+            const iRight = (y * w + (x + 1)) * 4;
+
+            const lum = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+            const lumUp    = 0.2126 * data[iUp] + 0.7152 * data[iUp + 1] + 0.0722 * data[iUp + 2];
+            const lumDown  = 0.2126 * data[iDown] + 0.7152 * data[iDown + 1] + 0.0722 * data[iDown + 2];
+            const lumLeft  = 0.2126 * data[iLeft] + 0.7152 * data[iLeft + 1] + 0.0722 * data[iLeft + 2];
+            const lumRight = 0.2126 * data[iRight] + 0.7152 * data[iRight + 1] + 0.0722 * data[iRight + 2];
+
+            const isEdge = Math.abs(lum - lumUp) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumDown) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumLeft) > EDGE_THRESHOLD ||
+                           Math.abs(lum - lumRight) > EDGE_THRESHOLD;
+
+            const adaptStrength = lum < 130
+                ? strength                       // gelap → kuat
+                : strength * 0.3;                // terang → ringan
+
+            if (isEdge) {
+                // Kurangi sedikit saja
+                out[i]     = data[i]     * (1 - adaptStrength * 0.3) + data[iUp]     * adaptStrength * 0.075 + data[iDown]     * adaptStrength * 0.075 + data[iLeft]     * adaptStrength * 0.075 + data[iRight]     * adaptStrength * 0.075;
+                out[i + 1] = data[i + 1] * (1 - adaptStrength * 0.3) + data[iUp + 1] * adaptStrength * 0.075 + data[iDown + 1] * adaptStrength * 0.075 + data[iLeft + 1] * adaptStrength * 0.075 + data[iRight + 1] * adaptStrength * 0.075;
+                out[i + 2] = data[i + 2] * (1 - adaptStrength * 0.3) + data[iUp + 2] * adaptStrength * 0.075 + data[iDown + 2] * adaptStrength * 0.075 + data[iLeft + 2] * adaptStrength * 0.075 + data[iRight + 2] * adaptStrength * 0.075;
+            } else {
+                const avgR = (data[i] + data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 5;
+                const avgG = (data[i + 1] + data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 5;
+                const avgB = (data[i + 2] + data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 5;
+
+                out[i]     = data[i]     * (1 - adaptStrength) + avgR * adaptStrength;
+                out[i + 1] = data[i + 1] * (1 - adaptStrength) + avgG * adaptStrength;
+                out[i + 2] = data[i + 2] * (1 - adaptStrength) + avgB * adaptStrength;
+            }
+        }
+    }
+
+    frameData.data.set(out);
 }
