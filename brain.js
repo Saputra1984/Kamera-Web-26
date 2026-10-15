@@ -1448,17 +1448,9 @@ async function captureHDRBracketing(video, canvas, w, h) {
     console.log(`📸 5 frame terambil dalam ${(performance.now() - t0).toFixed(0)}ms`);
     console.log(`🔀 Menggabungkan...`);
 
-    // Pre-denoise setiap frame
-    console.log(`🧹 Pre-denoise ${frames.length} frame...`);
-    const tPre = performance.now();
-    for (let i = 0; i < frames.length; i++) {
-        chromaDenoiseFrame(frames[i], w, h, 0.6);
-    }
-    console.log(`✅ Pre-denoise selesai: ${(performance.now() - tPre).toFixed(0)}ms`);
-
     // Merge
     const t1 = performance.now();
-    const merged = mergeHDRFrames(frames, w, h);
+    const merged = mergeHDRFramesWasm(frames, w, h);
     console.log(`✅ Merge selesai dalam ${(performance.now() - t1).toFixed(0)}ms`);
 
     // Tulis ke canvas
@@ -1733,4 +1725,87 @@ function chromaDenoiseFrame(frameData, w, h, strength) {
     }
 
     frameData.data.set(out);
+}
+
+// WASM HDR MERGE — dengan alignment
+function mergeHDRFramesWasm(frames, w, h) {
+    if (typeof HdrModule === 'undefined' || !HdrModule._find_shift_sad) {
+        console.warn('WASM tidak tersedia, fallback ke JS');
+        return mergeHDRFrames(frames, w, h);
+    }
+
+    const n = frames.length;
+    const frameSize = w * h * 4;
+
+    // 1. Alokasi semua frame di WASM heap
+    const framePtrs = [];
+    for (let i = 0; i < n; i++) {
+        const ptr = HdrModule._malloc(frameSize);
+        HdrModule.HEAPU8.set(frames[i].data, ptr);
+        framePtrs.push(ptr);
+    }
+
+    // 2. Buat array of pointers (untuk C++)
+    const ptrArrayPtr = HdrModule._malloc(n * 4);
+    for (let i = 0; i < n; i++) {
+        HdrModule.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
+    }
+
+    // 3. Cari shift setiap frame terhadap base (EV 0 = tengah)
+    const baseIdx = Math.floor(n / 2);
+    const shiftsArrayPtr = HdrModule._malloc(n * 2 * 4);
+    const shifts = [];
+
+    for (let i = 0; i < n; i++) {
+        const dxPtr = HdrModule._malloc(4);
+        const dyPtr = HdrModule._malloc(4);
+        
+        if (i === baseIdx) {
+            HdrModule.HEAP32[dxPtr >> 2] = 0;
+            HdrModule.HEAP32[dyPtr >> 2] = 0;
+        } else {
+            HdrModule._find_shift_sad(
+                framePtrs[baseIdx], framePtrs[i],
+                w, h, 15,    // max_shift 15 pixel
+                dxPtr, dyPtr
+            );
+        }
+        
+        const dx = HdrModule.HEAP32[dxPtr >> 2];
+        const dy = HdrModule.HEAP32[dyPtr >> 2];
+        HdrModule.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
+        HdrModule.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
+        shifts.push({ dx, dy });
+        
+        HdrModule._free(dxPtr);
+        HdrModule._free(dyPtr);
+        
+        console.log(`  🔍 Frame ${i} (EV offset): shift (${dx}, ${dy})`);
+    }
+
+    // 4. Alokasi output buffer
+    const outPtr = HdrModule._malloc(frameSize);
+
+    // 5. Panggil merge di WASM
+    const t0 = performance.now();
+    HdrModule._hdr_merge_aligned(
+        ptrArrayPtr, n,
+        shiftsArrayPtr,
+        w, h,
+        outPtr
+    );
+    const t1 = performance.now();
+    console.log(`✅ WASM merge (dengan alignment): ${(t1-t0).toFixed(0)}ms`);
+
+    // 6. Copy hasil balik ke JS
+    const merged = new Uint8ClampedArray(w * h * 4);
+    merged.set(HdrModule.HEAPU8.subarray(outPtr, outPtr + frameSize));
+
+    // 7. Cleanup
+    for (const p of framePtrs) HdrModule._free(p);
+    HdrModule._free(ptrArrayPtr);
+    HdrModule._free(shiftsArrayPtr);
+    HdrModule._free(outPtr);
+
+    return merged;
 }
