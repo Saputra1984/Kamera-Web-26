@@ -1519,51 +1519,57 @@ async function captureHDRBracketing(video, canvas, w, h) {
 function mergeHDRFrames(frames, w, h) {
     const n = frames.length;
     const merged = new Uint8ClampedArray(w * h * 4);
-    const refFrameIdx = Math.floor(n / 2);
-    const refData = frames[refFrameIdx].data;
+    
+    // EV 0 = index tengah
+    const baseIdx = Math.floor(n / 2);
+    const baseData = frames[baseIdx].data;
+    
+    // Precompute Y untuk semua frame
+    const yArrays = frames.map(f => {
+        const d = f.data;
+        const out = new Uint8ClampedArray(w * h);
+        for (let p = 0, i = 0; p < w * h; p++, i += 4) {
+            out[p] = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+        }
+        return out;
+    });
 
-    for (let i = 0; i < merged.length; i += 4) {
-        let sumY = 0, sumW = 0;
-
-        // ─── 1. MERGE LUMINANCE dari semua frame ───
+    for (let p = 0, i = 0; p < w * h; p++, i += 4) {
+        const baseY = yArrays[baseIdx][p];
+        
+        // Cari frame terbaik untuk pixel ini berdasarkan luminance
+        // "Best" = Y paling dekat ke 128 (mid-tone)
+        let chosenIdx = baseIdx;
+        let chosenDist = Math.abs(baseY - 128);
+        
         for (let f = 0; f < n; f++) {
-            const d = frames[f].data;
-            const y = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-
-            let weight;
-            if (y < 128) weight = y / 128;
-            else weight = (255 - y) / 127;
-            weight = weight * weight;         // kurva tajam
-            if (y < 3 || y > 252) weight = 0; // buang blowout/crushed
-
-            sumY += y * weight;
-            sumW += weight;
+            if (f === baseIdx) continue;
+            const fY = yArrays[f][p];
+            
+            // Frame ini relevan kalau baseY terlalu ekstrem
+            // (blowout: baseY > 240 → cari frame yang lebih gelap)
+            // (crush: baseY < 20 → cari frame yang lebih terang)
+            let relevant = false;
+            
+            if (baseY > 235 && fY < baseY - 10) relevant = true;   // base blowout, frame lebih gelap
+            if (baseY < 20 && fY > baseY + 10) relevant = true;    // base crushed, frame lebih terang
+            
+            if (!relevant) continue;
+            
+            const fDist = Math.abs(fY - 128);
+            if (fDist < chosenDist) {
+                chosenDist = fDist;
+                chosenIdx = f;
+            }
         }
-
-        let finalY;
-        if (sumW > 0) {
-            finalY = sumY / sumW;
-        } else {
-            // Fallback: pakai frame tengah
-            const r = refData[i], g = refData[i + 1], b = refData[i + 2];
-            finalY = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        }
-
-        // ─── 2. CHROMA dari frame referensi (EV 0) ───
-        const refR = refData[i];
-        const refG = refData[i + 1];
-        const refB = refData[i + 2];
-        const refY = 0.2126 * refR + 0.7152 * refG + 0.0722 * refB;
-        const refCb = (refB - refY) * 0.5389;
-        const refCr = (refR - refY) * 0.6350;
-
-        // ─── 3. RECONSTRUCT RGB dari Y_final + chroma_reference ───
-        let r = finalY + refCr / 0.6350;
-        let b = finalY + refCb / 0.5389;
-        let g = (finalY - 0.2126 * r - 0.0722 * b) / 0.7152;
-
-        // ─── 4. TONE CURVE — hanya luminance yang diubah ───
-        // ⭐ FIX: sebelumnya di-apply per-channel → muncul garis tepi warna
+        
+        // Ambil RGB dari frame terpilih (tidak di-average!)
+        const d = frames[chosenIdx].data;
+        let r = d[i];
+        let g = d[i+1];
+        let b = d[i+2];
+        
+        // Tone curve halus pada luminance (preserve chroma)
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lum > 1) {
             const newLum = toneCurveNatural(lum);
@@ -1572,24 +1578,11 @@ function mergeHDRFrames(frames, w, h) {
             g *= factor;
             b *= factor;
         }
-
-        // ─── 5. SHADOW CHROMA LIFT — sederhana & konsisten ───
-        // ⭐ FIX: formula lama ada suku negatif yang bikin warna aneh
-        const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (midLum < 90 && midLum > 0) {
-            const lift = 1 + 0.12 * (1 - midLum / 90);
-            r *= lift;
-            g *= lift;
-            b *= lift;
-        }
-
-        // ─── 6. VIBRANCE — luminance-preserving, boost warna pucat ───
+        
+        // Vibrance lembut
         const vib = vibrancePerPixel(r, g, b);
-        r = vib.r;
-        g = vib.g;
-        b = vib.b;
-
-        // ─── 7. CLAMP & simpan ───
+        r = vib.r; g = vib.g; b = vib.b;
+        
         merged[i]     = Math.max(0, Math.min(255, r));
         merged[i + 1] = Math.max(0, Math.min(255, g));
         merged[i + 2] = Math.max(0, Math.min(255, b));
