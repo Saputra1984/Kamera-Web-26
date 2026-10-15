@@ -1514,33 +1514,55 @@ function mergeHDRFrames(frames, w, h) {
 
     for (let p = 0, i = 0; p < w * h; p++, i += 4) {
         const baseY = yArrays[baseIdx][p];
+
+        // 1 = full rescue (blowout / crush)
+        let rescueWeight = 0;
+        if (baseY > 200) {
+            // Highlight zone: 200 → 0, 250 → 1 (smooth gradient)
+            rescueWeight = Math.min(1, (baseY - 200) / 50);
+        } else if (baseY < 50) {
+            // Shadow zone: 50 → 0, 10 → 1 (smooth gradient)
+            rescueWeight = Math.min(1, (50 - baseY) / 40);
+        }
+
         let chosenIdx = baseIdx;
-        let chosenDist = Math.abs(baseY - 128);
+        if (rescueWeight > 0.05) {
+            let chosenDist = Math.abs(baseY - 128);
+            for (let f = 0; f < n; f++) {
+                if (f === baseIdx) continue;
+                const fY = yArrays[f][p];
 
-        for (let f = 0; f < n; f++) {
-            if (f === baseIdx) continue;
-            const fY = yArrays[f][p];
+                let relevant = false;
+                if (baseY > 200 && fY < baseY - 8) relevant = true;
+                if (baseY < 50 && fY > baseY + 8) relevant = true;
 
-            let relevant = false;
-            // ⭐ Threshold diperlonggar
-            if (baseY > 215 && fY < baseY - 10) relevant = true;
-            if (baseY < 35 && fY > baseY + 10) relevant = true;
+                if (!relevant) continue;
 
-            if (!relevant) continue;
-
-            const fDist = Math.abs(fY - 128);
-            if (fDist < chosenDist) {
-                chosenDist = fDist;
-                chosenIdx = f;
+                const fDist = Math.abs(fY - 128);
+                if (fDist < chosenDist) {
+                    chosenDist = fDist;
+                    chosenIdx = f;
+                }
             }
         }
 
-        const d = frames[chosenIdx].data;
-        let r = d[i];
-        let g = d[i + 1];
-        let b = d[i + 2];
+        let r, g, b;
+        const baseR = baseData[i];
+        const baseG = baseData[i + 1];
+        const baseB = baseData[i + 2];
 
-        // Tone curve halus pada luminance
+        if (chosenIdx !== baseIdx && rescueWeight > 0.05) {
+            const cd = frames[chosenIdx].data;
+            r = baseR * (1 - rescueWeight) + cd[i]     * rescueWeight;
+            g = baseG * (1 - rescueWeight) + cd[i + 1] * rescueWeight;
+            b = baseB * (1 - rescueWeight) + cd[i + 2] * rescueWeight;
+        } else {
+            r = baseR;
+            g = baseG;
+            b = baseB;
+        }
+
+        // Tone curve pada luminance (preserve chroma)
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lum > 1) {
             const newLum = toneCurveNatural(lum);
@@ -1550,7 +1572,7 @@ function mergeHDRFrames(frames, w, h) {
             b *= factor;
         }
 
-        // ⭐ Shadow chroma lift halus
+        // Shadow chroma lift halus
         const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (midLum < 80 && midLum > 0) {
             const lift = 1 + 0.08 * (1 - midLum / 80);
@@ -1559,7 +1581,7 @@ function mergeHDRFrames(frames, w, h) {
             b *= lift;
         }
 
-        // ⭐ Vibrance hanya di area terang/mid
+        // Vibrance hanya di area terang/mid
         const lumNow = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lumNow > 60) {
             const vib = vibrancePerPixel(r, g, b);
@@ -1574,7 +1596,7 @@ function mergeHDRFrames(frames, w, h) {
         merged[i + 3] = 255;
     }
 
-    // Post-denoise chroma di area gelap
+    // Edge-preserving chroma denoise
     chromaDenoiseShadow(merged, w, h);
 
     return merged;
@@ -1615,15 +1637,16 @@ function vibrancePerPixel(r, g, b) {
 
 function chromaDenoiseShadow(data, w, h) {
     const out = new Uint8ClampedArray(data);
-    const EDGE_THRESHOLD = 25;
     const DARK_LIMIT = 130;
+    const SIMILAR_THRESHOLD = 25;
 
     for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
             const i = (y * w + x) * 4;
             const r = data[i], g = data[i + 1], b = data[i + 2];
-
             const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+            // Skip area terang
             if (lum >= DARK_LIMIT) continue;
 
             const iUp    = ((y - 1) * w + x) * 4;
@@ -1636,30 +1659,25 @@ function chromaDenoiseShadow(data, w, h) {
             const lumLeft  = 0.2126 * data[iLeft] + 0.7152 * data[iLeft + 1] + 0.0722 * data[iLeft + 2];
             const lumRight = 0.2126 * data[iRight] + 0.7152 * data[iRight + 1] + 0.0722 * data[iRight + 2];
 
-            const isEdge = Math.abs(lum - lumUp) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumDown) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumLeft) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumRight) > EDGE_THRESHOLD;
+            // Kalau tetangga jauh beda luminance (edge), beri bobot 0
+            const wUp    = Math.abs(lum - lumUp)    < SIMILAR_THRESHOLD ? 1 : 0;
+            const wDown  = Math.abs(lum - lumDown)  < SIMILAR_THRESHOLD ? 1 : 0;
+            const wLeft  = Math.abs(lum - lumLeft)  < SIMILAR_THRESHOLD ? 1 : 0;
+            const wRight = Math.abs(lum - lumRight) < SIMILAR_THRESHOLD ? 1 : 0;
 
-            // Adaptive: makin gelap, makin kuat
-            const depthFactor = 1 - (lum / DARK_LIMIT);   // 0 (terang) .. 1 (sangat gelap)
+            const totalW = 1 + wUp + wDown + wLeft + wRight;
 
-            if (isEdge) {
-                const s = 0.3 + 0.3 * depthFactor;
-                out[i]     = r * (1 - s) + (data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 4 * s;
-                out[i + 1] = g * (1 - s) + (data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 4 * s;
-                out[i + 2] = b * (1 - s) + (data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 4 * s;
-            } else {
-                // ⭐ Kuat: 0.4 → 0.6 di area sangat gelap
-                const s = 0.4 + 0.25 * depthFactor;
-                const avgR = (r + data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 5;
-                const avgG = (g + data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 5;
-                const avgB = (b + data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 5;
+            const avgR = (r + data[iUp] * wUp + data[iDown] * wDown + data[iLeft] * wLeft + data[iRight] * wRight) / totalW;
+            const avgG = (g + data[iUp + 1] * wUp + data[iDown + 1] * wDown + data[iLeft + 1] * wLeft + data[iRight + 1] * wRight) / totalW;
+            const avgB = (b + data[iUp + 2] * wUp + data[iDown + 2] * wDown + data[iLeft + 2] * wLeft + data[iRight + 2] * wRight) / totalW;
 
-                out[i]     = r * (1 - s) + avgR * s;
-                out[i + 1] = g * (1 - s) + avgG * s;
-                out[i + 2] = b * (1 - s) + avgB * s;
-            }
+            // Kekuatan denoise: makin gelap, makin kuat
+            const depthFactor = 1 - lum / DARK_LIMIT;
+            const s = 0.4 + 0.25 * depthFactor;
+
+            out[i]     = r * (1 - s) + avgR * s;
+            out[i + 1] = g * (1 - s) + avgG * s;
+            out[i + 2] = b * (1 - s) + avgB * s;
         }
     }
 
