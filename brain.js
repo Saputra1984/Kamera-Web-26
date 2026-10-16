@@ -1494,7 +1494,6 @@ function mergeHDRFrames(frames, w, h) {
     const baseIdx = Math.floor(n / 2);
     const baseData = frames[baseIdx].data;
 
-    // Precompute Y untuk semua frame
     const yArrays = frames.map(f => {
         const d = f.data;
         const out = new Uint8ClampedArray(w * h);
@@ -1507,14 +1506,14 @@ function mergeHDRFrames(frames, w, h) {
     for (let p = 0, i = 0; p < w * h; p++, i += 4) {
         const baseY = yArrays[baseIdx][p];
 
-        // 1 = full rescue (blowout / crush)
+        // ⭐ RESCUE LEBIH AGRESIF
+        // Highlight: mulai rescue dari Y=170 (lebih agresif dari 200)
+        // Shadow:   mulai rescue dari Y=60 (lebih agresif dari 50)
         let rescueWeight = 0;
-        if (baseY > 200) {
-            // Highlight zone: 200 → 0, 250 → 1 (smooth gradient)
-            rescueWeight = Math.min(1, (baseY - 200) / 50);
-        } else if (baseY < 50) {
-            // Shadow zone: 50 → 0, 10 → 1 (smooth gradient)
-            rescueWeight = Math.min(1, (50 - baseY) / 40);
+        if (baseY > 170) {
+            rescueWeight = Math.min(1, (baseY - 170) / 60);
+        } else if (baseY < 60) {
+            rescueWeight = Math.min(1, (60 - baseY) / 50);
         }
 
         let chosenIdx = baseIdx;
@@ -1524,10 +1523,10 @@ function mergeHDRFrames(frames, w, h) {
                 if (f === baseIdx) continue;
                 const fY = yArrays[f][p];
 
+                // ⭐ Threshold relaksasi: cari frame yang lebih gelap/terang minimal 5
                 let relevant = false;
-                if (baseY > 200 && fY < baseY - 8) relevant = true;
-                if (baseY < 50 && fY > baseY + 8) relevant = true;
-
+                if (baseY > 170 && fY < baseY - 5) relevant = true;
+                if (baseY < 60 && fY > baseY + 5) relevant = true;
                 if (!relevant) continue;
 
                 const fDist = Math.abs(fY - 128);
@@ -1549,38 +1548,35 @@ function mergeHDRFrames(frames, w, h) {
             g = baseG * (1 - rescueWeight) + cd[i + 1] * rescueWeight;
             b = baseB * (1 - rescueWeight) + cd[i + 2] * rescueWeight;
         } else {
-            r = baseR;
-            g = baseG;
-            b = baseB;
+            r = baseR; g = baseG; b = baseB;
         }
 
-        // Tone curve pada luminance (preserve chroma)
+        // ⭐ TONE CURVE lebih HALUS (k=0.06 bukan 0.15)
         const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lum > 1) {
-            const newLum = toneCurveNatural(lum);
+            const newLum = toneCurveNaturalHalus(lum);
             const factor = newLum / lum;
-            r *= factor;
-            g *= factor;
-            b *= factor;
+            r *= factor; g *= factor; b *= factor;
         }
 
-        // Shadow chroma lift halus
+        // ⭐ SHADOW LIFT sangat halus (0.04 bukan 0.08) — jaga kedalaman
         const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (midLum < 80 && midLum > 0) {
-            const lift = 1 + 0.08 * (1 - midLum / 80);
-            r *= lift;
-            g *= lift;
-            b *= lift;
+            const lift = 1 + 0.04 * (1 - midLum / 80);
+            r *= lift; g *= lift; b *= lift;
         }
 
-        // Vibrance hanya di area terang/mid
+        // ⭐ VIBRANCE sangat halus (0.08 bukan 0.18) — warna kalem
         const lumNow = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         if (lumNow > 60) {
-            const vib = vibrancePerPixel(r, g, b);
-            r = vib.r;
-            g = vib.g;
-            b = vib.b;
+            const vib = vibranceHalus(r, g, b);
+            r = vib.r; g = vib.g; b = vib.b;
         }
+
+        // ⭐ HIGHLIGHT ROLL-OFF: kompres highlight, jangan hard clip
+        r = highlightRollOff(r);
+        g = highlightRollOff(g);
+        b = highlightRollOff(b);
 
         merged[i]     = Math.max(0, Math.min(255, r));
         merged[i + 1] = Math.max(0, Math.min(255, g));
@@ -1588,43 +1584,44 @@ function mergeHDRFrames(frames, w, h) {
         merged[i + 3] = 255;
     }
 
-    // Edge-preserving chroma denoise
-    chromaDenoiseShadow(merged, w, h);
-
     return merged;
 }
 
-function toneCurveNatural(v) {
+// Tone curve HALUS — k=0.06 (dari 0.15)
+function toneCurveNaturalHalus(v) {
     let x = v / 255;
     if (x < 0) x = 0;
     if (x > 1) x = 1;
-
-    const k = 0.15;
+    const k = 0.06;
     const y = x + k * x * (1 - x) * (2 * x - 1);
     return Math.max(0, Math.min(255, y * 255));
 }
 
-function vibrancePerPixel(r, g, b) {
+// Vibrance HALUS — max 1.08 (dari 1.18)
+function vibranceHalus(r, g, b) {
     const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-
     const maxV = Math.max(r, g, b);
     const minV = Math.min(r, g, b);
     const chroma = maxV - minV;
-
-    // Boost: maksimum 1.18 di chroma rendah, turun ke 1.0 di chroma tinggi
-    const chromaRatio = chroma / 255;             // 0..1
-    const boost = 1 + 0.18 * Math.pow(1 - chromaRatio, 2);
-
-    // Boost di sekitar luminance (preserve luminance)
+    const chromaRatio = chroma / 255;
+    const boost = 1 + 0.08 * Math.pow(1 - chromaRatio, 2);
     const newR = lum + (r - lum) * boost;
     const newG = lum + (g - lum) * boost;
     const newB = lum + (b - lum) * boost;
-
     return {
         r: Math.max(0, Math.min(255, newR)),
         g: Math.max(0, Math.min(255, newG)),
         b: Math.max(0, Math.min(255, newB))
     };
+}
+
+// Highlight roll-off: kompres highlight lembut, bukan hard clip
+function highlightRollOff(v) {
+    if (v <= 200) return v;
+    // Soft compress: 200..255 → 200..250
+    const t = (v - 200) / 55;  // 0..1
+    const softened = 200 + 50 * Math.sqrt(t);  // kurva akar
+    return Math.min(250, softened);
 }
 
 function chromaDenoiseShadow(data, w, h) {
@@ -1674,57 +1671,6 @@ function chromaDenoiseShadow(data, w, h) {
     }
 
     data.set(out);
-}
-
-function chromaDenoiseFrame(frameData, w, h, strength) {
-    if (!strength) strength = 0.5;
-    const data = frameData.data;
-    const out = new Uint8ClampedArray(data);
-
-    const EDGE_THRESHOLD = 20;
-
-    for (let y = 1; y < h - 1; y++) {
-        for (let x = 1; x < w - 1; x++) {
-            const i = (y * w + x) * 4;
-
-            const iUp    = ((y - 1) * w + x) * 4;
-            const iDown  = ((y + 1) * w + x) * 4;
-            const iLeft  = (y * w + (x - 1)) * 4;
-            const iRight = (y * w + (x + 1)) * 4;
-
-            const lum = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
-            const lumUp    = 0.2126 * data[iUp] + 0.7152 * data[iUp + 1] + 0.0722 * data[iUp + 2];
-            const lumDown  = 0.2126 * data[iDown] + 0.7152 * data[iDown + 1] + 0.0722 * data[iDown + 2];
-            const lumLeft  = 0.2126 * data[iLeft] + 0.7152 * data[iLeft + 1] + 0.0722 * data[iLeft + 2];
-            const lumRight = 0.2126 * data[iRight] + 0.7152 * data[iRight + 1] + 0.0722 * data[iRight + 2];
-
-            const isEdge = Math.abs(lum - lumUp) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumDown) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumLeft) > EDGE_THRESHOLD ||
-                           Math.abs(lum - lumRight) > EDGE_THRESHOLD;
-
-            const adaptStrength = lum < 130
-                ? strength                       // gelap → kuat
-                : strength * 0.3;                // terang → ringan
-
-            if (isEdge) {
-                // Kurangi sedikit saja
-                out[i]     = data[i]     * (1 - adaptStrength * 0.3) + data[iUp]     * adaptStrength * 0.075 + data[iDown]     * adaptStrength * 0.075 + data[iLeft]     * adaptStrength * 0.075 + data[iRight]     * adaptStrength * 0.075;
-                out[i + 1] = data[i + 1] * (1 - adaptStrength * 0.3) + data[iUp + 1] * adaptStrength * 0.075 + data[iDown + 1] * adaptStrength * 0.075 + data[iLeft + 1] * adaptStrength * 0.075 + data[iRight + 1] * adaptStrength * 0.075;
-                out[i + 2] = data[i + 2] * (1 - adaptStrength * 0.3) + data[iUp + 2] * adaptStrength * 0.075 + data[iDown + 2] * adaptStrength * 0.075 + data[iLeft + 2] * adaptStrength * 0.075 + data[iRight + 2] * adaptStrength * 0.075;
-            } else {
-                const avgR = (data[i] + data[iUp] + data[iDown] + data[iLeft] + data[iRight]) / 5;
-                const avgG = (data[i + 1] + data[iUp + 1] + data[iDown + 1] + data[iLeft + 1] + data[iRight + 1]) / 5;
-                const avgB = (data[i + 2] + data[iUp + 2] + data[iDown + 2] + data[iLeft + 2] + data[iRight + 2]) / 5;
-
-                out[i]     = data[i]     * (1 - adaptStrength) + avgR * adaptStrength;
-                out[i + 1] = data[i + 1] * (1 - adaptStrength) + avgG * adaptStrength;
-                out[i + 2] = data[i + 2] * (1 - adaptStrength) + avgB * adaptStrength;
-            }
-        }
-    }
-
-    frameData.data.set(out);
 }
 
 // WASM HDR MERGE — dengan alignment
