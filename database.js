@@ -507,8 +507,8 @@ window.APP_DATABASE = {
       "saturation": 1.0
     },
     "hdr_natural": {
-        "glare_threshold": 240,
-        "shadow_lift": 1.0,
+        "glare_threshold": 220,
+        "shadow_lift": 1.04,
         "edge_boost_multiplier": 0.0,   // TIDAK ada penajaman
         "saturation": 1.0               // TIDAK ada boost warna
     },
