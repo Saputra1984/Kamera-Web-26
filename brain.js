@@ -1793,7 +1793,7 @@ function mergeHDRFramesWasm(frames, w, h) {
             } else {
                 HdrModule._find_shift_sad(
                     framePtrs[baseIdx], framePtrs[i],
-                    w, h, 25,   // ⭐ naikkan dari 15 ke 25
+                    w, h, 40,   // ⭐ naikkan dari 15 ke 25
                     dxPtr, dyPtr
                 );
             }
