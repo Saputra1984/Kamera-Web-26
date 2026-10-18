@@ -1425,7 +1425,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-2, -1, 0, 1, 2];
+    const evs = [-2, 0, 3];
     const frames = [];
     const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
@@ -1495,6 +1495,25 @@ async function captureHDRBracketing(video, canvas, w, h) {
         Module._free(ptr);
     }
 
+    // Memaksa area gelap jadi terang tanpa bikin jendela jadi putih polos
+    console.log("🔦 Mendorong cahaya ruangan...");
+    const gamma = 0.5; // Semakin kecil angkanya, semakin terang (0.4 - 0.7)
+    
+    // Buat tabel warna cepat (LUT) agar prosesnya tidak lemot
+    const lut = new Uint8ClampedArray(256);
+    for (let i = 0; i < 256; i++) {
+        lut[i] = 255 * Math.pow(i / 255, gamma);
+    }
+    
+    // Terapkan ke seluruh pixel
+    for (let i = 0; i < merged.length; i += 4) {
+        merged[i]     = lut[merged[i]];     // Red
+        merged[i + 1] = lut[merged[i + 1]]; // Green
+        merged[i + 2] = lut[merged[i + 2]]; // Blue
+    }
+    
+    console.log("✅ Pendorong cahaya selesai.");
+    
     // Tulis ke Canvas
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(merged, w, h), 0, 0);
