@@ -1434,19 +1434,100 @@ function matchColorToBase(mergedData, baseData, w, h) {
     }
 }
 
-// HDR NATURAL — Exposure Bracketing 5 Frame
+// SMART AUTO CAPTURE (Deteksi Gelap/Terang + HDR)
 async function captureHDRBracketing(video, canvas, w, h) {
-    console.log("🌤️ Memulai HDR bracketing 3 frame (Fast)...");
+    console.log("📸 Memulai proses pengambilan gambar...");
     const t0 = performance.now();
 
     stopExposureStabilizer();
+
+    // ⭐ 1. CEK KECERAHAN RUANGAN (Smart Auto)
+    const testCanvas = document.createElement('canvas');
+    testCanvas.width = 10; testCanvas.height = 10;
+    const testCtx = testCanvas.getContext('2d');
+    testCtx.drawImage(video, 0, 0, 10, 10);
+    const testPixels = testCtx.getImageData(0, 0, 10, 10).data;
+    let totalLum = 0;
+    for (let i = 0; i < testPixels.length; i += 4) {
+        totalLum += (0.2126 * testPixels[i] + 0.7152 * testPixels[i+1] + 0.0722 * testPixels[i+2]);
+    }
+    const avgLum = totalLum / 100;
 
     const track = window.cameraTrack;
     const originalEV = appMemory.currentHardwareExposure || 0;
     const caps = track && track.getCapabilities ? track.getCapabilities() : {};
     const hasExposure = !!(caps.exposureCompensation);
 
-    // Reset ke EV 0 dulu
+    // JALUR A: RUANGAN GELAP (Mode Night - 1 Frame + WASM)
+    if (avgLum < 60) {
+        console.log("🌙 Ruangan gelap terdeteksi. Menggunakan Mode Night (1 Frame Bersih).");
+        
+        // Pastikan EV kembali ke 0
+        if (hasExposure) {
+            try { await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] }); } catch(e){}
+            await new Promise(r => setTimeout(r, 200));
+        }
+
+        // Ambil 1 frame
+        const temp = document.createElement('canvas');
+        temp.width = w; temp.height = h;
+        const tCtx = temp.getContext('2d');
+        tCtx.drawImage(video, 0, 0, w, h);
+        let merged = tCtx.getImageData(0, 0, w, h).data;
+
+        // Panggil WASM untuk menerangkan
+        if (typeof Module !== 'undefined') {
+            const size = w * h * 4;
+            const ptr = Module._malloc(size);
+            
+            // 1. Local Tone Map Sangat Kuat (Angkat bayangan)
+            if (Module._local_tone_map) {
+                Module.HEAPU8.set(merged, ptr);
+                Module._local_tone_map(ptr, w, h, 1.0); 
+                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+            }
+            
+            // 2. Detail Rendah (0.15) Agar noise tidak muncul
+            if (Module._multi_scale_detail) {
+                Module.HEAPU8.set(merged, ptr);
+                Module._multi_scale_detail(ptr, w, h, 0.15); 
+                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+            }
+
+            // 3. Denoise Kuat (0.7) Hapus bintik
+            if (Module._chroma_denoise) {
+                Module.HEAPU8.set(merged, ptr);
+                Module._chroma_denoise(ptr, w, h, 0.7); 
+                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+            }
+            Module._free(ptr);
+        }
+
+        // Tulis ke Canvas & Simpan
+        const ctx = canvas.getContext('2d');
+        ctx.putImageData(new ImageData(merged, w, h), 0, 0);
+        
+        const fmt = appMemory.defaultFormatFoto || "webp";
+        let pk = (fmt === "jpeg") ? "jpeg_hr" : "webp_max";
+        const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
+        const url = canvas.toDataURL(prof.mime_type, prof.quality);
+        saveImageToAppGallery(url);
+
+        console.log(`✅ Mode Night selesai: ${(performance.now() - t0).toFixed(0)}ms`);
+        
+        startExposureStabilizer();
+        setTimeout(() => {
+            const sb = document.getElementById('shutter_btn');
+            if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
+        }, 500);
+        
+        return; // BERHENTI, JANGAN LANJUT KE HDR
+    }
+
+    // JALUR B: RUANGAN TERANG (Mode HDR 3 Frame - Anti Ghosting)
+    console.log("☀️ Ruangan terang terdeteksi. Menggunakan Mode HDR 3-Frame.");
+
+    // Reset ke EV 0
     if (hasExposure) {
         try {
             await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] });
@@ -1454,9 +1535,10 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-2, -1, 0, 1, 2];
+    // Hanya 3 Frame untuk mencegah goyangan/ghosting
+    const evs = [-2, 0, 2]; 
     const frames = [];
-    const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
+    const settleMs = hasExposure ? 200 : 50;
 
     for (const ev of evs) {
         try {
@@ -1473,7 +1555,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
         const tCtx = temp.getContext('2d');
         tCtx.drawImage(video, 0, 0, w, h);
         frames.push(tCtx.getImageData(0, 0, w, h));
-        console.log(`  ✓ Frame EV ${ev > 0 ? '+' : ''}${ev} diambil`);
     }
 
     if (hasExposure) {
@@ -1484,38 +1565,38 @@ async function captureHDRBracketing(video, canvas, w, h) {
 
     console.log(`📸 3 frame terambil: ${(performance.now() - t0).toFixed(0)}ms`);
 
-    // Merge HDR
+    // 1. Merge HDR via WASM
     const t1 = performance.now();
     let merged = mergeHDRFramesWasm(frames, w, h);
     
-    // ⭐ TARIK WARNA ASLI DARI FRAME NORMAL (EV 0)
-    const baseFrame = frames[Math.floor(frames.length / 2)]; // Frame EV 0
-    if (baseFrame) {
+    // 2. Tarik Warna Asli dari Frame Normal (EV 0) agar tidak over-saturated
+    const baseFrame = frames[Math.floor(frames.length / 2)]; 
+    if (baseFrame && typeof matchColorToBase === 'function') {
         console.log("🎨 Menyelaraskan warna HDR dengan Normal...");
         matchColorToBase(merged, baseFrame.data, w, h);
     }
-    console.log(`✅ Merge selesai: ${(performance.now() - t1).toFixed(0)}ms`);
+    console.log(`✅ Merge & Color Match: ${(performance.now() - t1).toFixed(0)}ms`);
 
-    // ⭐ POST-PROCESSING (Local Tone Map & Multi-Scale Detail)
+    // 3. POST-PROCESSING WASM
     if (typeof Module !== 'undefined') {
         const size = w * h * 4;
         const ptr = Module._malloc(size);
         
-        // 1. Local Tone Map (0.6 -> 0.7 agar bayangan lebih terangkat)
+        // A. Local Tone Map (0.6) - Aman
         if (Module._local_tone_map) {
             Module.HEAPU8.set(merged, ptr);
-            Module._local_tone_map(ptr, w, h, 0.7); 
+            Module._local_tone_map(ptr, w, h, 0.6); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // 2. Multi-Scale Detail (0.2 -> 0.3 agar lebih jernih)
+        // B. Multi-Scale Detail (0.3) - Bikin tajam tanpa noise kasar
         if (Module._multi_scale_detail) {
             Module.HEAPU8.set(merged, ptr);
             Module._multi_scale_detail(ptr, w, h, 0.3); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // 3. Chroma Denoise (0.4 -> 0.5 agar warna lebih mulus)
+        // C. Chroma Denoise (0.5) - Bersihkan warna
         if (Module._chroma_denoise) {
             Module.HEAPU8.set(merged, ptr);
             Module._chroma_denoise(ptr, w, h, 0.5); 
@@ -1551,6 +1632,30 @@ async function captureHDRBracketing(video, canvas, w, h) {
         const sb = document.getElementById('shutter_btn');
         if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
     }, 500);
+}
+
+// ⭐ Pastikan fungsi ini ada di file brain.js kamu (untuk Color Match)
+function matchColorToBase(mergedData, baseData, w, h) {
+    for (let i = 0; i < w * h * 4; i += 4) {
+        const yMerged = 0.2126 * mergedData[i] + 0.7152 * mergedData[i+1] + 0.0722 * mergedData[i+2];
+        const rBase = baseData[i];
+        const gBase = baseData[i+1];
+        const bBase = baseData[i+2];
+        const yBase = 0.2126 * rBase + 0.7152 * gBase + 0.0722 * bBase;
+        
+        const cbBase = (bBase - yBase) * 0.5389;
+        const crBase = (rBase - yBase) * 0.6350;
+        
+        const yFinal = yMerged * 0.9 + yBase * 0.1; 
+        
+        let rFinal = yFinal + crBase / 0.6350;
+        let bFinal = yFinal + cbBase / 0.5389;
+        let gFinal = (yFinal - 0.2126 * rFinal - 0.0722 * bFinal) / 0.7152;
+        
+        mergedData[i]   = Math.max(0, Math.min(255, rFinal));
+        mergedData[i+1] = Math.max(0, Math.min(255, gFinal));
+        mergedData[i+2] = Math.max(0, Math.min(255, bFinal));
+    }
 }
 
 // ⭐ FUNGSI FINAL: WASM Merge dengan indikator Badge
