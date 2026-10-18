@@ -1425,7 +1425,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1];
+    const evs = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.2, 0.4, 0.6, 0.8, 1];
     const frames = [];
     const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
