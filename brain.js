@@ -1425,7 +1425,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-2, 0, 2];
+    const evs = [-1.5, 0, 1.5];
     const frames = [];
     const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
@@ -1465,19 +1465,30 @@ async function captureHDRBracketing(video, canvas, w, h) {
         const size = w * h * 4;
         const ptr = Module._malloc(size);
         
-        // A. Local Tone Map (Anti Silau)
+        // A. Local Tone Map (Anti Silau & Angkat Bayangan)
         if (Module._local_tone_map) {
             console.log("🎨 Local Tone Mapping...");
             Module.HEAPU8.set(merged, ptr);
-            Module._local_tone_map(ptr, w, h, 0.8); // 0.8 = kekuatan
+            // Naikkan ke 0.9 agar area gelap lebih terangkat
+            Module._local_tone_map(ptr, w, h, 0.9); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
-
+        
         // B. Multi-Scale Detail (Bikin Padat & Tajam)
         if (Module._multi_scale_detail) {
             console.log("✨ Multi-Scale Detail...");
             Module.HEAPU8.set(merged, ptr);
-            Module._multi_scale_detail(ptr, w, h, 0.5); // 0.5 = kekuatan
+            // TURUNKAN ke 0.2 agar tidak mempertajam noise di area gelap
+            Module._multi_scale_detail(ptr, w, h, 0.2); 
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        }
+        
+        // C. Chroma Denoise (Hapus bintik warna di kegelapan)
+        if (Module._chroma_denoise) {
+            console.log("🧹 Chroma Denoise...");
+            Module.HEAPU8.set(merged, ptr);
+            // Aktifkan pembersih noise warna dengan kekuatan 0.7
+            Module._chroma_denoise(ptr, w, h, 0.7); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
@@ -1534,7 +1545,7 @@ function mergeHDRFramesWasm(frames, w, h) {
         badge.style.display = 'block';
         badge.style.color = '#00e5ff';
         badge.style.borderColor = '#00e5ff';
-        badge.innerText = '✅ WASM aktif';
+        badge.innerText = '✅ Kamera Siap';
     }
 
     const n = frames.length;
@@ -1596,10 +1607,10 @@ function mergeHDRFramesWasm(frames, w, h) {
         );
         
         const t1 = performance.now();
-        console.log(`✅ WASM merge: ${(t1 - t0).toFixed(0)}ms`);
+        console.log(`✅ Kmera merge: ${(t1 - t0).toFixed(0)}ms`);
 
         if (badge) {
-            badge.innerText = `✅ WASM ${(t1-t0).toFixed(0)}ms`;
+            badge.innerText = `✅ Kamera ${(t1-t0).toFixed(0)}ms`;
         }
 
         const merged = new Uint8ClampedArray(w * h * 4);
