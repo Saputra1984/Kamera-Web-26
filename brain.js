@@ -1387,77 +1387,88 @@ window.addEventListener('beforeunload', () => {
 
 // HDR NATURAL — Exposure Bracketing 5 Frame
 async function captureHDRBracketing(video, canvas, w, h) {
-    console.log("🌤️ Memulai HDR bracketing 5 frame...");
+    console.log("🌤️ Memulai HDR bracketing 3 frame (Fast)...");
     const t0 = performance.now();
 
-    // ⭐ Matikan auto-stabilizer selama bracketing
     stopExposureStabilizer();
 
-    // Simpan referensi track (SEKALI SAJA)
     const track = window.cameraTrack;
     const originalEV = appMemory.currentHardwareExposure || 0;
     const caps = track && track.getCapabilities ? track.getCapabilities() : {};
     const hasExposure = !!(caps.exposureCompensation);
 
-    // Reset ke EV 0 dulu supaya konsisten
+    // Reset ke EV 0 dulu
     if (hasExposure) {
         try {
             await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] });
-            await new Promise(r => setTimeout(r, 400));
+            await new Promise(r => setTimeout(r, 200));
         } catch (e) { /* ignore */ }
     }
 
-    // EV sequence
-    const evs = [-2, -1, 0, 1, 2];
+    const evs = [-2, 0, 2];
     const frames = [];
+    const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
-    const settleMs = hasExposure ? 350 : 100;
-
-    // Ambil frame untuk setiap EV
     for (const ev of evs) {
         try {
             if (hasExposure) {
-                await track.applyConstraints({
-                    advanced: [{ exposureCompensation: ev }]
-                });
+                await track.applyConstraints({ advanced: [{ exposureCompensation: ev }] });
             }
             await new Promise(r => setTimeout(r, settleMs));
         } catch (e) {
             console.warn(`[HDR] Gagal set EV ${ev}:`, e.message);
         }
 
-        // Ambil frame
         const temp = document.createElement('canvas');
-        temp.width = w;
-        temp.height = h;
+        temp.width = w; temp.height = h;
         const tCtx = temp.getContext('2d');
         tCtx.drawImage(video, 0, 0, w, h);
         frames.push(tCtx.getImageData(0, 0, w, h));
         console.log(`  ✓ Frame EV ${ev > 0 ? '+' : ''}${ev} diambil`);
     }
 
-    // Kembalikan exposure asli
     if (hasExposure) {
         try {
-            await track.applyConstraints({
-                advanced: [{ exposureCompensation: originalEV }]
-            });
+            await track.applyConstraints({ advanced: [{ exposureCompensation: originalEV }] });
         } catch (e) { /* ignore */ }
     }
 
-    console.log(`📸 5 frame terambil dalam ${(performance.now() - t0).toFixed(0)}ms`);
-    console.log(`🔀 Menggabungkan...`);
+    console.log(`📸 3 frame terambil: ${(performance.now() - t0).toFixed(0)}ms`);
 
-    // Merge
+    // Merge HDR
     const t1 = performance.now();
-    const merged = mergeHDRFramesWasm(frames, w, h);
-    console.log(`✅ Merge selesai dalam ${(performance.now() - t1).toFixed(0)}ms`);
+    let merged = mergeHDRFramesWasm(frames, w, h);
+    console.log(`✅ Merge selesai: ${(performance.now() - t1).toFixed(0)}ms`);
 
-    // Tulis ke canvas
+    // ⭐ POST-PROCESSING (Local Tone Map & Multi-Scale Detail)
+    if (typeof Module !== 'undefined') {
+        const size = w * h * 4;
+        const ptr = Module._malloc(size);
+        
+        // A. Local Tone Map (Anti Silau)
+        if (Module._local_tone_map) {
+            console.log("🎨 Local Tone Mapping...");
+            Module.HEAPU8.set(merged, ptr);
+            Module._local_tone_map(ptr, w, h, 0.8); // 0.8 = kekuatan
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        }
+
+        // B. Multi-Scale Detail (Bikin Padat & Tajam)
+        if (Module._multi_scale_detail) {
+            console.log("✨ Multi-Scale Detail...");
+            Module.HEAPU8.set(merged, ptr);
+            Module._multi_scale_detail(ptr, w, h, 0.5); // 0.5 = kekuatan
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        }
+        
+        Module._free(ptr);
+    }
+
+    // Tulis ke Canvas
     const ctx = canvas.getContext('2d');
     ctx.putImageData(new ImageData(merged, w, h), 0, 0);
 
-    // Simpan dengan format yang dipilih
+    // Simpan
     const fmt = appMemory.defaultFormatFoto || "webp";
     let pk = "webp_max";
     if (fmt === "jpeg") pk = "jpeg_hr";
@@ -1465,7 +1476,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     else if (fmt === "pdf") pk = "pdf";
 
     if (fmt === "pdf") {
-        // ⭐ Tidak pakai `return` — biar cleanup tetap jalan
         prosesSimpanSebagaiPDF(canvas);
     } else {
         const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
@@ -1473,128 +1483,93 @@ async function captureHDRBracketing(video, canvas, w, h) {
         saveImageToAppGallery(url);
     }
 
-    console.log(`✅ HDR Natural selesai total: ${(performance.now() - t0).toFixed(0)}ms`);
+    console.log(`✅ Total HDR: ${(performance.now() - t0).toFixed(0)}ms`);
 
-    // ⭐ Cleanup: nyalakan stabilizer + pulihkan tombol
     startExposureStabilizer();
-
     setTimeout(() => {
         const sb = document.getElementById('shutter_btn');
-        if (sb) {
-            sb.disabled = false;
-            sb.style.pointerEvents = "auto";
-            sb.style.opacity = "1";
-        }
-    }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
+        if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
+    }, 500);
 }
 
 function mergeHDRFramesWasm(frames, w, h) {
-    const badge = document.getElementById('wasm-badge');
-    
-    // ⭐ GANTI HdrModule JADI Module
     if (typeof Module === 'undefined' || !Module._find_shift_sad) {
-        console.warn('❌ WASM belum siap / fallback JS');
-        if (badge) {
-            badge.style.display = 'block';
-            badge.style.color = '#ff9500';
-            badge.style.borderColor = '#ff9500';
-            badge.innerText = '⚠️ WASM fallback JS';
-            setTimeout(() => { badge.style.display = 'none'; }, 3000);
-        }
+        console.warn('WASM tidak tersedia, fallback ke JS');
         return mergeHDRFrames(frames, w, h);
-    }
-    
-    // WASM SIAP
-    if (badge) {
-        badge.style.display = 'block';
-        badge.style.color = '#00e5ff';
-        badge.style.borderColor = '#00e5ff';
-        badge.innerText = '✅ WASM aktif';
     }
 
     const n = frames.length;
     const frameSize = w * h * 4;
 
-    try {
-        const framePtrs = [];
-        for (let i = 0; i < n; i++) {
-            // ⭐ GANTI HdrModule JADI Module
-            const ptr = Module._malloc(frameSize);
-            Module.HEAPU8.set(frames[i].data, ptr);
-            framePtrs.push(ptr);
-        }
-
-        const ptrArrayPtr = Module._malloc(n * 4);
-        for (let i = 0; i < n; i++) {
-            Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
-        }
-
-        const baseIdx = Math.floor(n / 2);
-        const shiftsArrayPtr = Module._malloc(n * 2 * 4);
-
-        for (let i = 0; i < n; i++) {
-            const dxPtr = Module._malloc(4);
-            const dyPtr = Module._malloc(4);
-            
-            if (i === baseIdx) {
-                Module.HEAP32[dxPtr >> 2] = 0;
-                Module.HEAP32[dyPtr >> 2] = 0;
-            } else {
-                Module._find_shift_sad(
-                    framePtrs[baseIdx], framePtrs[i],
-                    w, h, 25,
-                    dxPtr, dyPtr
-                );
-            }
-            
-            const dx = Module.HEAP32[dxPtr >> 2];
-            const dy = Module.HEAP32[dyPtr >> 2];
-            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
-            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
-            
-            console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
-            
-            Module._free(dxPtr);
-            Module._free(dyPtr);
-        }
-
-        const outPtr = Module._malloc(frameSize);
-
-        const t0 = performance.now();
-        Module._hdr_merge_aligned(
-            ptrArrayPtr, n,
-            shiftsArrayPtr,
-            w, h,
-            outPtr
-        );
-        const t1 = performance.now();
-        console.log(`✅ WASM merge: ${(t1-t0).toFixed(0)}ms`);
-
-        if (badge) {
-            badge.innerText = `✅ WASM ${(t1-t0).toFixed(0)}ms`;
-        }
-
-        const merged = new Uint8ClampedArray(w * h * 4);
-        merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
-
-        for (const p of framePtrs) Module._free(p);
-        Module._free(ptrArrayPtr);
-        Module._free(shiftsArrayPtr);
-        Module._free(outPtr);
-
-        setTimeout(() => { if (badge) badge.style.display = 'none'; }, 2500);
-
-        return merged;
-    } catch (err) {
-        console.error('❌ WASM error:', err);
-        if (badge) {
-            badge.style.color = '#ff3b30';
-            badge.style.borderColor = '#ff3b30';
-            badge.innerText = '❌ WASM error: ' + err.message;
-            setTimeout(() => { badge.style.display = 'none'; }, 5000);
-        }
-        return mergeHDRFrames(frames, w, h);
+    // 1. Alokasi frame
+    const framePtrs = [];
+    for (let i = 0; i < n; i++) {
+        const ptr = Module._malloc(frameSize);
+        Module.HEAPU8.set(frames[i].data, ptr);
+        framePtrs.push(ptr);
     }
+
+    // 2. Array of pointers
+    const ptrArrayPtr = Module._malloc(n * 4);
+    for (let i = 0; i < n; i++) {
+        Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
+    }
+
+    // 3. Cari shift (ALIGNMENT)
+    const baseIdx = Math.floor(n / 2);
+    const shiftsArrayPtr = Module._malloc(n * 2 * 4);
+
+    for (let i = 0; i < n; i++) {
+        const dxPtr = Module._malloc(4);
+        const dyPtr = Module._malloc(4);
+        
+        if (i === baseIdx) {
+            Module.HEAP32[dxPtr >> 2] = 0;
+            Module.HEAP32[dyPtr >> 2] = 0;
+        } else {
+            Module._find_shift_sad(
+                framePtrs[baseIdx], framePtrs[i],
+                w, h, 25, // Max shift 25 pixel
+                dxPtr, dyPtr
+            );
+        }
+        
+        const dx = Module.HEAP32[dxPtr >> 2];
+        const dy = Module.HEAP32[dyPtr >> 2];
+        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
+        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
+        
+        console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
+        
+        Module._free(dxPtr);
+        Module._free(dyPtr);
+    }
+
+    // 4. Merge HDR
+    const outPtr = Module._malloc(frameSize);
+    const t0 = performance.now();
+    
+    Module._hdr_merge_aligned(
+        ptrArrayPtr, n,
+        shiftsArrayPtr,
+        w, h,
+        outPtr
+    );
+    
+    const t1 = performance.now();
+    console.log(`✅ WASM HDR merge: ${(t1-t0).toFixed(0)}ms`);
+
+    // 5. Copy hasil
+    const merged = new Uint8ClampedArray(w * h * 4);
+    merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
+
+    // 6. Cleanup
+    for (const p of framePtrs) Module._free(p);
+    Module._free(ptrArrayPtr);
+    Module._free(shiftsArrayPtr);
+    Module._free(outPtr);
+
+    return merged;
 }
 
 // Tone curve HALUS — k=0.06 (dari 0.15)
