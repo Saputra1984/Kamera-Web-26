@@ -1425,7 +1425,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-2, 0, 3];
+    const evs = [-2, 0, 2];
     const frames = [];
     const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
@@ -1465,54 +1465,32 @@ async function captureHDRBracketing(video, canvas, w, h) {
         const size = w * h * 4;
         const ptr = Module._malloc(size);
         
-        // A. Local Tone Map (Anti Silau & Angkat Bayangan)
+        // 1. Local Tone Map (Angkat bayangan tapi jangan berlebihan)
         if (Module._local_tone_map) {
             console.log("🎨 Local Tone Mapping...");
             Module.HEAPU8.set(merged, ptr);
-            // Naikkan ke 0.9 agar area gelap lebih terangkat
-            Module._local_tone_map(ptr, w, h, 0.9); 
+            Module._local_tone_map(ptr, w, h, 0.6); // 0.6 = Aman, tidak merusak kontras
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
-        
-        // B. Multi-Scale Detail (Bikin Padat & Tajam)
+    
+        // 2. Multi-Scale Detail (Cukup 0.2 agar tidak mempertegas noise)
         if (Module._multi_scale_detail) {
             console.log("✨ Multi-Scale Detail...");
             Module.HEAPU8.set(merged, ptr);
-            // TURUNKAN ke 0.2 agar tidak mempertajam noise di area gelap
             Module._multi_scale_detail(ptr, w, h, 0.2); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // C. Chroma Denoise (Hapus bintik warna di kegelapan)
+        // 3. Chroma Denoise (Cukup 0.4 agar warna tidak jadi belang/posterized)
         if (Module._chroma_denoise) {
             console.log("🧹 Chroma Denoise...");
             Module.HEAPU8.set(merged, ptr);
-            // Aktifkan pembersih noise warna dengan kekuatan 0.7
-            Module._chroma_denoise(ptr, w, h, 0.7); 
+            Module._chroma_denoise(ptr, w, h, 0.4); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
         Module._free(ptr);
     }
-
-    // Memaksa area gelap jadi terang tanpa bikin jendela jadi putih polos
-    console.log("🔦 Mendorong cahaya ruangan...");
-    const gamma = 0.5; // Semakin kecil angkanya, semakin terang (0.4 - 0.7)
-    
-    // Buat tabel warna cepat (LUT) agar prosesnya tidak lemot
-    const lut = new Uint8ClampedArray(256);
-    for (let i = 0; i < 256; i++) {
-        lut[i] = 255 * Math.pow(i / 255, gamma);
-    }
-    
-    // Terapkan ke seluruh pixel
-    for (let i = 0; i < merged.length; i += 4) {
-        merged[i]     = lut[merged[i]];     // Red
-        merged[i + 1] = lut[merged[i + 1]]; // Green
-        merged[i + 2] = lut[merged[i + 2]]; // Blue
-    }
-    
-    console.log("✅ Pendorong cahaya selesai.");
     
     // Tulis ke Canvas
     const ctx = canvas.getContext('2d');
