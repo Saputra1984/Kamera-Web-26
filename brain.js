@@ -908,27 +908,47 @@ function saveImageToAppGallery(finalDataURL) {
 
     try {
         const downloadLink = document.createElement('a');
-        const timestamp = new Date().getTime();
+        const now = new Date();
+        
+        // Format tanggal: 2025-10-18_14-30-45
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mi = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        const timestamp = `${yyyy}-${mm}-${dd}_${hh}-${mi}-${ss}`;
+        
         const activeFormat = appMemory.defaultFormatFoto || "webp";
         const profile = window.APP_DATABASE.shutter_pipeline.processing_profiles[
             activeFormat === "jpeg" ? "jpeg_hr" : "webp_max"
         ] || { mime_type: "image/webp" };
         const ext = profile.mime_type.includes("webp") ? "webp" : "jpg";
+        
+        // ⭐ Nama file dengan prefix + tanggal
+        // Contoh: AiPicture_Cam_2025-10-18_14-30-45.webp
+        const filename = `AiPicture_Cam_${timestamp}.${ext}`;
 
-        downloadLink.download = `AiPicture_${timestamp}.${ext}`;
+        downloadLink.download = filename;
         downloadLink.href = finalDataURL;
 
         document.body.appendChild(downloadLink);
         downloadLink.click();
         document.body.removeChild(downloadLink);
-        console.log(`Gambar tersimpan: AiPicture_${timestamp}.${ext}`);
+        console.log(`📸 Tersimpan: ${filename}`);
     } catch (error) {
         console.error("Fallback download:", error);
         fetch(finalDataURL).then(res => res.blob()).then(blob => {
             const url = URL.createObjectURL(blob);
             const downloadLink = document.createElement('a');
-            const timestamp = new Date().getTime();
-            downloadLink.download = `AiPicture_${timestamp}.webp`;
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mi = String(now.getMinutes()).padStart(2, '0');
+            const ss = String(now.getSeconds()).padStart(2, '0');
+            downloadLink.download = `AiPicture_Cam_${yyyy}-${mm}-${dd}_${hh}-${mi}-${ss}.webp`;
             downloadLink.href = url;
             document.body.appendChild(downloadLink);
             downloadLink.click();
@@ -1492,84 +1512,119 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }, 500);
 }
 
+// ⭐ FUNGSI FINAL: WASM Merge dengan indikator Badge
 function mergeHDRFramesWasm(frames, w, h) {
+    const badge = document.getElementById('wasm-badge');
+    
+    // 1. Cek apakah Module dan fungsinya siap
     if (typeof Module === 'undefined' || !Module._find_shift_sad) {
-        console.warn('WASM tidak tersedia, fallback ke JS');
+        console.warn('❌ WASM belum siap / fallback JS');
+        if (badge) {
+            badge.style.display = 'block';
+            badge.style.color = '#ff9500';
+            badge.style.borderColor = '#ff9500';
+            badge.innerText = '⚠️ WASM fallback JS';
+            setTimeout(() => { badge.style.display = 'none'; }, 3000);
+        }
         return mergeHDRFrames(frames, w, h);
+    }
+    
+    // 2. WASM Siap
+    if (badge) {
+        badge.style.display = 'block';
+        badge.style.color = '#00e5ff';
+        badge.style.borderColor = '#00e5ff';
+        badge.innerText = '✅ WASM aktif';
     }
 
     const n = frames.length;
     const frameSize = w * h * 4;
 
-    // 1. Alokasi frame
-    const framePtrs = [];
-    for (let i = 0; i < n; i++) {
-        const ptr = Module._malloc(frameSize);
-        Module.HEAPU8.set(frames[i].data, ptr);
-        framePtrs.push(ptr);
-    }
-
-    // 2. Array of pointers
-    const ptrArrayPtr = Module._malloc(n * 4);
-    for (let i = 0; i < n; i++) {
-        Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
-    }
-
-    // 3. Cari shift (ALIGNMENT)
-    const baseIdx = Math.floor(n / 2);
-    const shiftsArrayPtr = Module._malloc(n * 2 * 4);
-
-    for (let i = 0; i < n; i++) {
-        const dxPtr = Module._malloc(4);
-        const dyPtr = Module._malloc(4);
-        
-        if (i === baseIdx) {
-            Module.HEAP32[dxPtr >> 2] = 0;
-            Module.HEAP32[dyPtr >> 2] = 0;
-        } else {
-            Module._find_shift_sad(
-                framePtrs[baseIdx], framePtrs[i],
-                w, h, 25, // Max shift 25 pixel
-                dxPtr, dyPtr
-            );
+    try {
+        // Alokasi memori untuk frame
+        const framePtrs = [];
+        for (let i = 0; i < n; i++) {
+            const ptr = Module._malloc(frameSize);
+            Module.HEAPU8.set(frames[i].data, ptr);
+            framePtrs.push(ptr);
         }
+
+        const ptrArrayPtr = Module._malloc(n * 4);
+        for (let i = 0; i < n; i++) {
+            Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
+        }
+
+        // Cari shift (Alignment)
+        const baseIdx = Math.floor(n / 2);
+        const shiftsArrayPtr = Module._malloc(n * 2 * 4);
+
+        for (let i = 0; i < n; i++) {
+            const dxPtr = Module._malloc(4);
+            const dyPtr = Module._malloc(4);
+
+            if (i === baseIdx) {
+                Module.HEAP32[dxPtr >> 2] = 0;
+                Module.HEAP32[dyPtr >> 2] = 0;
+            } else {
+                Module._find_shift_sad(
+                    framePtrs[baseIdx], framePtrs[i],
+                    w, h, 25, // Max shift 25 pixel
+                    dxPtr, dyPtr
+                );
+            }
+
+            const dx = Module.HEAP32[dxPtr >> 2];
+            const dy = Module.HEAP32[dyPtr >> 2];
+            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
+            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
+
+            console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
+
+            Module._free(dxPtr);
+            Module._free(dyPtr);
+        }
+
+        // Merge HDR
+        const outPtr = Module._malloc(frameSize);
+        const t0 = performance.now();
         
-        const dx = Module.HEAP32[dxPtr >> 2];
-        const dy = Module.HEAP32[dyPtr >> 2];
-        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
-        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
+        Module._hdr_merge_aligned(
+            ptrArrayPtr, n,
+            shiftsArrayPtr,
+            w, h,
+            outPtr
+        );
         
-        console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
-        
-        Module._free(dxPtr);
-        Module._free(dyPtr);
+        const t1 = performance.now();
+        console.log(`✅ WASM merge: ${(t1 - t0).toFixed(0)}ms`);
+
+        if (badge) {
+            badge.innerText = `✅ WASM ${(t1-t0).toFixed(0)}ms`;
+        }
+
+        const merged = new Uint8ClampedArray(w * h * 4);
+        merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
+
+        // Cleanup
+        for (const p of framePtrs) Module._free(p);
+        Module._free(ptrArrayPtr);
+        Module._free(shiftsArrayPtr);
+        Module._free(outPtr);
+
+        setTimeout(() => { if (badge) badge.style.display = 'none'; }, 2500);
+
+        return merged;
+    } catch (err) {
+        console.error('❌ WASM error:', err);
+        if (badge) {
+            badge.style.color = '#ff3b30';
+            badge.style.borderColor = '#ff3b30';
+            badge.innerText = '❌ WASM error: ' + err.message;
+            setTimeout(() => { badge.style.display = 'none'; }, 5000);
+        }
+        // Fallback ke JS jika WASM crash di tengah jalan
+        return mergeHDRFrames(frames, w, h);
     }
-
-    // 4. Merge HDR
-    const outPtr = Module._malloc(frameSize);
-    const t0 = performance.now();
-    
-    Module._hdr_merge_aligned(
-        ptrArrayPtr, n,
-        shiftsArrayPtr,
-        w, h,
-        outPtr
-    );
-    
-    const t1 = performance.now();
-    console.log(`✅ WASM HDR merge: ${(t1-t0).toFixed(0)}ms`);
-
-    // 5. Copy hasil
-    const merged = new Uint8ClampedArray(w * h * 4);
-    merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
-
-    // 6. Cleanup
-    for (const p of framePtrs) Module._free(p);
-    Module._free(ptrArrayPtr);
-    Module._free(shiftsArrayPtr);
-    Module._free(outPtr);
-
-    return merged;
 }
 
 // Tone curve HALUS — k=0.06 (dari 0.15)
@@ -1656,127 +1711,4 @@ function chromaDenoiseShadow(data, w, h) {
     }
 
     data.set(out);
-}
-
-// WASM HDR MERGE — dengan alignment
-function mergeHDRFramesWasm(frames, w, h) {
-    const badge = document.getElementById('wasm-badge');
-    
-    // Cek WASM ready
-    if (typeof HdrModule === 'undefined') {
-        console.warn('❌ HdrModule tidak terdefinisi');
-        if (badge) {
-            badge.style.display = 'block';
-            badge.style.color = '#ff3b30';
-            badge.style.borderColor = '#ff3b30';
-            badge.innerText = '❌ WASM file tidak load';
-            setTimeout(() => { badge.style.display = 'none'; }, 3000);
-        }
-        return mergeHDRFrames(frames, w, h);
-    }
-    
-    if (!HdrModule._find_shift_sad) {
-        console.warn('❌ HdrModule._find_shift_sad belum siap');
-        if (badge) {
-            badge.style.display = 'block';
-            badge.style.color = '#ff9500';
-            badge.style.borderColor = '#ff9500';
-            badge.innerText = '⚠️ WASM belum siap (fallback JS)';
-            setTimeout(() => { badge.style.display = 'none'; }, 3000);
-        }
-        return mergeHDRFrames(frames, w, h);
-    }
-    
-    // WASM SIAP
-    if (badge) {
-        badge.style.display = 'block';
-        badge.style.color = '#00e5ff';
-        badge.style.borderColor = '#00e5ff';
-        badge.innerText = '✅ WASM aktif';
-    }
-
-    const n = frames.length;
-    const frameSize = w * h * 4;
-
-    try {
-        const framePtrs = [];
-        for (let i = 0; i < n; i++) {
-            const ptr = HdrModule._malloc(frameSize);
-            HdrModule.HEAPU8.set(frames[i].data, ptr);
-            framePtrs.push(ptr);
-        }
-
-        const ptrArrayPtr = HdrModule._malloc(n * 4);
-        for (let i = 0; i < n; i++) {
-            HdrModule.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
-        }
-
-        const baseIdx = Math.floor(n / 2);
-        const shiftsArrayPtr = HdrModule._malloc(n * 2 * 4);
-
-        for (let i = 0; i < n; i++) {
-            const dxPtr = HdrModule._malloc(4);
-            const dyPtr = HdrModule._malloc(4);
-
-            if (i === baseIdx) {
-                HdrModule.HEAP32[dxPtr >> 2] = 0;
-                HdrModule.HEAP32[dyPtr >> 2] = 0;
-            } else {
-                HdrModule._find_shift_sad(
-                    framePtrs[baseIdx], framePtrs[i],
-                    w, h, 40,   // ⭐ naikkan dari 15 ke 25
-                    dxPtr, dyPtr
-                );
-            }
-
-            const dx = HdrModule.HEAP32[dxPtr >> 2];
-            const dy = HdrModule.HEAP32[dyPtr >> 2];
-            HdrModule.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
-            HdrModule.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
-
-            console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
-
-            HdrModule._free(dxPtr);
-            HdrModule._free(dyPtr);
-        }
-
-        const outPtr = HdrModule._malloc(frameSize);
-
-        const t0 = performance.now();
-        HdrModule._hdr_merge_aligned(
-            ptrArrayPtr, n,
-            shiftsArrayPtr,
-            w, h,
-            outPtr
-        );
-        const t1 = performance.now();
-        console.log(`✅ WASM merge: ${(t1 - t0).toFixed(0)}ms`);
-
-        // Update badge
-        if (badge) {
-            badge.innerText = `✅ WASM ${(t1-t0).toFixed(0)}ms`;
-        }
-
-        const merged = new Uint8ClampedArray(w * h * 4);
-        merged.set(HdrModule.HEAPU8.subarray(outPtr, outPtr + frameSize));
-
-        for (const p of framePtrs) HdrModule._free(p);
-        HdrModule._free(ptrArrayPtr);
-        HdrModule._free(shiftsArrayPtr);
-        HdrModule._free(outPtr);
-
-        setTimeout(() => { if (badge) badge.style.display = 'none'; }, 2500);
-
-        return merged;
-    } catch (err) {
-        console.error('❌ WASM error:', err);
-        if (badge) {
-            badge.style.color = '#ff3b30';
-            badge.style.borderColor = '#ff3b30';
-            badge.innerText = '❌ WASM error: ' + err.message;
-            setTimeout(() => { badge.style.display = 'none'; }, 5000);
-        }
-        // Fallback ke JS
-        return mergeHDRFrames(frames, w, h);
-    }
 }
