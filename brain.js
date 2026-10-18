@@ -1488,103 +1488,113 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }, window.APP_DATABASE.shutter_pipeline.visual_effects.button_cooldown_ms);
 }
 
-function mergeHDRFrames(frames, w, h) {
-    const n = frames.length;
-    const merged = new Uint8ClampedArray(w * h * 4);
-    const baseIdx = Math.floor(n / 2);
-    const baseData = frames[baseIdx].data;
-
-    const yArrays = frames.map(f => {
-        const d = f.data;
-        const out = new Uint8ClampedArray(w * h);
-        for (let p = 0, i = 0; p < w * h; p++, i += 4) {
-            out[p] = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+function mergeHDRFramesWasm(frames, w, h) {
+    const badge = document.getElementById('wasm-badge');
+    
+    // ⭐ GANTI HdrModule JADI Module
+    if (typeof Module === 'undefined' || !Module._find_shift_sad) {
+        console.warn('❌ WASM belum siap / fallback JS');
+        if (badge) {
+            badge.style.display = 'block';
+            badge.style.color = '#ff9500';
+            badge.style.borderColor = '#ff9500';
+            badge.innerText = '⚠️ WASM fallback JS';
+            setTimeout(() => { badge.style.display = 'none'; }, 3000);
         }
-        return out;
-    });
-
-    for (let p = 0, i = 0; p < w * h; p++, i += 4) {
-        const baseY = yArrays[baseIdx][p];
-
-        // ⭐ RESCUE LEBIH AGRESIF
-        // Highlight: mulai rescue dari Y=170 (lebih agresif dari 200)
-        // Shadow:   mulai rescue dari Y=60 (lebih agresif dari 50)
-        let rescueWeight = 0;
-        if (baseY > 170) {
-            rescueWeight = Math.min(1, (baseY - 170) / 60);
-        } else if (baseY < 60) {
-            rescueWeight = Math.min(1, (60 - baseY) / 50);
-        }
-
-        let chosenIdx = baseIdx;
-        if (rescueWeight > 0.05) {
-            let chosenDist = Math.abs(baseY - 128);
-            for (let f = 0; f < n; f++) {
-                if (f === baseIdx) continue;
-                const fY = yArrays[f][p];
-
-                // ⭐ Threshold relaksasi: cari frame yang lebih gelap/terang minimal 5
-                let relevant = false;
-                if (baseY > 170 && fY < baseY - 5) relevant = true;
-                if (baseY < 60 && fY > baseY + 5) relevant = true;
-                if (!relevant) continue;
-
-                const fDist = Math.abs(fY - 128);
-                if (fDist < chosenDist) {
-                    chosenDist = fDist;
-                    chosenIdx = f;
-                }
-            }
-        }
-
-        let r, g, b;
-        const baseR = baseData[i];
-        const baseG = baseData[i + 1];
-        const baseB = baseData[i + 2];
-
-        if (chosenIdx !== baseIdx && rescueWeight > 0.05) {
-            const cd = frames[chosenIdx].data;
-            r = baseR * (1 - rescueWeight) + cd[i]     * rescueWeight;
-            g = baseG * (1 - rescueWeight) + cd[i + 1] * rescueWeight;
-            b = baseB * (1 - rescueWeight) + cd[i + 2] * rescueWeight;
-        } else {
-            r = baseR; g = baseG; b = baseB;
-        }
-
-        // ⭐ TONE CURVE lebih HALUS (k=0.06 bukan 0.15)
-        const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (lum > 1) {
-            const newLum = toneCurveNaturalHalus(lum);
-            const factor = newLum / lum;
-            r *= factor; g *= factor; b *= factor;
-        }
-
-        // ⭐ SHADOW LIFT sangat halus (0.04 bukan 0.08) — jaga kedalaman
-        const midLum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (midLum < 80 && midLum > 0) {
-            const lift = 1 + 0.04 * (1 - midLum / 80);
-            r *= lift; g *= lift; b *= lift;
-        }
-
-        // ⭐ VIBRANCE sangat halus (0.08 bukan 0.18) — warna kalem
-        const lumNow = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (lumNow > 60) {
-            const vib = vibranceHalus(r, g, b);
-            r = vib.r; g = vib.g; b = vib.b;
-        }
-
-        // ⭐ HIGHLIGHT ROLL-OFF: kompres highlight, jangan hard clip
-        r = highlightRollOff(r);
-        g = highlightRollOff(g);
-        b = highlightRollOff(b);
-
-        merged[i]     = Math.max(0, Math.min(255, r));
-        merged[i + 1] = Math.max(0, Math.min(255, g));
-        merged[i + 2] = Math.max(0, Math.min(255, b));
-        merged[i + 3] = 255;
+        return mergeHDRFrames(frames, w, h);
+    }
+    
+    // WASM SIAP
+    if (badge) {
+        badge.style.display = 'block';
+        badge.style.color = '#00e5ff';
+        badge.style.borderColor = '#00e5ff';
+        badge.innerText = '✅ WASM aktif';
     }
 
-    return merged;
+    const n = frames.length;
+    const frameSize = w * h * 4;
+
+    try {
+        const framePtrs = [];
+        for (let i = 0; i < n; i++) {
+            // ⭐ GANTI HdrModule JADI Module
+            const ptr = Module._malloc(frameSize);
+            Module.HEAPU8.set(frames[i].data, ptr);
+            framePtrs.push(ptr);
+        }
+
+        const ptrArrayPtr = Module._malloc(n * 4);
+        for (let i = 0; i < n; i++) {
+            Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
+        }
+
+        const baseIdx = Math.floor(n / 2);
+        const shiftsArrayPtr = Module._malloc(n * 2 * 4);
+
+        for (let i = 0; i < n; i++) {
+            const dxPtr = Module._malloc(4);
+            const dyPtr = Module._malloc(4);
+            
+            if (i === baseIdx) {
+                Module.HEAP32[dxPtr >> 2] = 0;
+                Module.HEAP32[dyPtr >> 2] = 0;
+            } else {
+                Module._find_shift_sad(
+                    framePtrs[baseIdx], framePtrs[i],
+                    w, h, 25,
+                    dxPtr, dyPtr
+                );
+            }
+            
+            const dx = Module.HEAP32[dxPtr >> 2];
+            const dy = Module.HEAP32[dyPtr >> 2];
+            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = dx;
+            Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = dy;
+            
+            console.log(`  🔍 Frame ${i}: shift (${dx}, ${dy})`);
+            
+            Module._free(dxPtr);
+            Module._free(dyPtr);
+        }
+
+        const outPtr = Module._malloc(frameSize);
+
+        const t0 = performance.now();
+        Module._hdr_merge_aligned(
+            ptrArrayPtr, n,
+            shiftsArrayPtr,
+            w, h,
+            outPtr
+        );
+        const t1 = performance.now();
+        console.log(`✅ WASM merge: ${(t1-t0).toFixed(0)}ms`);
+
+        if (badge) {
+            badge.innerText = `✅ WASM ${(t1-t0).toFixed(0)}ms`;
+        }
+
+        const merged = new Uint8ClampedArray(w * h * 4);
+        merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
+
+        for (const p of framePtrs) Module._free(p);
+        Module._free(ptrArrayPtr);
+        Module._free(shiftsArrayPtr);
+        Module._free(outPtr);
+
+        setTimeout(() => { if (badge) badge.style.display = 'none'; }, 2500);
+
+        return merged;
+    } catch (err) {
+        console.error('❌ WASM error:', err);
+        if (badge) {
+            badge.style.color = '#ff3b30';
+            badge.style.borderColor = '#ff3b30';
+            badge.innerText = '❌ WASM error: ' + err.message;
+            setTimeout(() => { badge.style.display = 'none'; }, 5000);
+        }
+        return mergeHDRFrames(frames, w, h);
+    }
 }
 
 // Tone curve HALUS — k=0.06 (dari 0.15)
