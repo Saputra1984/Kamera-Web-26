@@ -1405,35 +1405,6 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-// ⭐ Menarik warna asli dari frame Normal (EV 0) ke gambar HDR
-function matchColorToBase(mergedData, baseData, w, h) {
-    for (let i = 0; i < w * h * 4; i += 4) {
-        // 1. Ambil Luminance (Kecerahan) dari HDR
-        const yMerged = 0.2126 * mergedData[i] + 0.7152 * mergedData[i+1] + 0.0722 * mergedData[i+2];
-        
-        // 2. Ambil Chroma (Warna) dari Base/Normal
-        const rBase = baseData[i];
-        const gBase = baseData[i+1];
-        const bBase = baseData[i+2];
-        const yBase = 0.2126 * rBase + 0.7152 * gBase + 0.0722 * bBase;
-        
-        const cbBase = (bBase - yBase) * 0.5389; // Blue difference
-        const crBase = (rBase - yBase) * 0.6350; // Red difference
-        
-        // 3. Gabungkan: Y dari HDR + CbCr dari Normal
-        // Gunakan faktor 0.8 agar warna tidak terlalu pucat, tapi tetap kalem seperti Normal
-        const yFinal = yMerged * 0.9 + yBase * 0.1; 
-        
-        let rFinal = yFinal + crBase / 0.6350;
-        let bFinal = yFinal + cbBase / 0.5389;
-        let gFinal = (yFinal - 0.2126 * rFinal - 0.0722 * bFinal) / 0.7152;
-        
-        mergedData[i]   = Math.max(0, Math.min(255, rFinal));
-        mergedData[i+1] = Math.max(0, Math.min(255, gFinal));
-        mergedData[i+2] = Math.max(0, Math.min(255, bFinal));
-    }
-}
-
 // SMART AUTO CAPTURE (Deteksi Gelap/Terang + HDR)
 async function captureHDRBracketing(video, canvas, w, h) {
     console.log("📸 Memulai proses pengambilan gambar...");
@@ -1634,7 +1605,6 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }, 500);
 }
 
-// ⭐ Pastikan fungsi ini ada di file brain.js kamu (untuk Color Match)
 function matchColorToBase(mergedData, baseData, w, h) {
     for (let i = 0; i < w * h * 4; i += 4) {
         const yMerged = 0.2126 * mergedData[i] + 0.7152 * mergedData[i+1] + 0.0722 * mergedData[i+2];
