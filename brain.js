@@ -1405,6 +1405,35 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
+// ⭐ Menarik warna asli dari frame Normal (EV 0) ke gambar HDR
+function matchColorToBase(mergedData, baseData, w, h) {
+    for (let i = 0; i < w * h * 4; i += 4) {
+        // 1. Ambil Luminance (Kecerahan) dari HDR
+        const yMerged = 0.2126 * mergedData[i] + 0.7152 * mergedData[i+1] + 0.0722 * mergedData[i+2];
+        
+        // 2. Ambil Chroma (Warna) dari Base/Normal
+        const rBase = baseData[i];
+        const gBase = baseData[i+1];
+        const bBase = baseData[i+2];
+        const yBase = 0.2126 * rBase + 0.7152 * gBase + 0.0722 * bBase;
+        
+        const cbBase = (bBase - yBase) * 0.5389; // Blue difference
+        const crBase = (rBase - yBase) * 0.6350; // Red difference
+        
+        // 3. Gabungkan: Y dari HDR + CbCr dari Normal
+        // Gunakan faktor 0.8 agar warna tidak terlalu pucat, tapi tetap kalem seperti Normal
+        const yFinal = yMerged * 0.9 + yBase * 0.1; 
+        
+        let rFinal = yFinal + crBase / 0.6350;
+        let bFinal = yFinal + cbBase / 0.5389;
+        let gFinal = (yFinal - 0.2126 * rFinal - 0.0722 * bFinal) / 0.7152;
+        
+        mergedData[i]   = Math.max(0, Math.min(255, rFinal));
+        mergedData[i+1] = Math.max(0, Math.min(255, gFinal));
+        mergedData[i+2] = Math.max(0, Math.min(255, bFinal));
+    }
+}
+
 // HDR NATURAL — Exposure Bracketing 5 Frame
 async function captureHDRBracketing(video, canvas, w, h) {
     console.log("🌤️ Memulai HDR bracketing 3 frame (Fast)...");
@@ -1425,7 +1454,7 @@ async function captureHDRBracketing(video, canvas, w, h) {
         } catch (e) { /* ignore */ }
     }
 
-    const evs = [-1.5, -1, -0.5, 0, 0.5, 1, 1.5];
+    const evs = [-2, -1, 0, 1, 2];
     const frames = [];
     const settleMs = hasExposure ? 200 : 50; // Lebih cepat dari 350ms
 
@@ -1458,6 +1487,13 @@ async function captureHDRBracketing(video, canvas, w, h) {
     // Merge HDR
     const t1 = performance.now();
     let merged = mergeHDRFramesWasm(frames, w, h);
+    
+    // ⭐ TARIK WARNA ASLI DARI FRAME NORMAL (EV 0)
+    const baseFrame = frames[Math.floor(frames.length / 2)]; // Frame EV 0
+    if (baseFrame) {
+        console.log("🎨 Menyelaraskan warna HDR dengan Normal...");
+        matchColorToBase(merged, baseFrame.data, w, h);
+    }
     console.log(`✅ Merge selesai: ${(performance.now() - t1).toFixed(0)}ms`);
 
     // ⭐ POST-PROCESSING (Local Tone Map & Multi-Scale Detail)
@@ -1465,27 +1501,24 @@ async function captureHDRBracketing(video, canvas, w, h) {
         const size = w * h * 4;
         const ptr = Module._malloc(size);
         
-        // 1. Local Tone Map (Angkat bayangan tapi jangan berlebihan)
+        // 1. Local Tone Map (0.6 -> 0.7 agar bayangan lebih terangkat)
         if (Module._local_tone_map) {
-            console.log("🎨 Local Tone Mapping...");
             Module.HEAPU8.set(merged, ptr);
-            Module._local_tone_map(ptr, w, h, 0.6); // 0.6 = Aman, tidak merusak kontras
-            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
-        }
-    
-        // 2. Multi-Scale Detail (Cukup 0.2 agar tidak mempertegas noise)
-        if (Module._multi_scale_detail) {
-            console.log("✨ Multi-Scale Detail...");
-            Module.HEAPU8.set(merged, ptr);
-            Module._multi_scale_detail(ptr, w, h, 0.2); 
+            Module._local_tone_map(ptr, w, h, 0.7); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // 3. Chroma Denoise (Cukup 0.4 agar warna tidak jadi belang/posterized)
-        if (Module._chroma_denoise) {
-            console.log("🧹 Chroma Denoise...");
+        // 2. Multi-Scale Detail (0.2 -> 0.3 agar lebih jernih)
+        if (Module._multi_scale_detail) {
             Module.HEAPU8.set(merged, ptr);
-            Module._chroma_denoise(ptr, w, h, 0.4); 
+            Module._multi_scale_detail(ptr, w, h, 0.3); 
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        }
+        
+        // 3. Chroma Denoise (0.4 -> 0.5 agar warna lebih mulus)
+        if (Module._chroma_denoise) {
+            Module.HEAPU8.set(merged, ptr);
+            Module._chroma_denoise(ptr, w, h, 0.5); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
