@@ -413,6 +413,8 @@ window.APP_DATABASE = {
       "sub_menu": [
         { "id": "rec_normal",   "label": "📷 Mode: Normal",              "action": "setActiveFeature", "value": "normal" },
         { "id": "rec_hdr_natural", "label": "🌤️ Mode: HDR Natural (Mata Manusia)", "action": "setActiveFeature", "value": "hdr_natural" },
+        { "id": "rec_hdr_bright", "label": "🔆 Mode: HDR Terang", "action": "setActiveFeature", "value": "hdr_bright" },
+        { "id": "rec_super_zoom", "label": "🔬 Mode: Super Zoom (15 Frame)", "action": "setActiveFeature", "value": "super_zoom" },
         { "id": "rec_ketajaman","label": "✨ Mode: Ketajaman Ekstrem",   "action": "setActiveFeature", "value": "ketajaman" },
         { "id": "rec_jendela",  "label": "🪟 Redam Silau Jendela",       "action": "setActiveFeature", "value": "jendela" },
         { "id": "rec_kain",     "label": "👕 Redam Silau / Serat Kain",  "action": "setActiveFeature", "value": "kain" },
@@ -501,10 +503,8 @@ window.APP_DATABASE = {
   // ═══════════════════════════════════════════════════════════
   "ai_reconstruction_profiles": {
     "normal": {
-      "glare_threshold": 220,
-      "shadow_lift": 1.0,
-      "edge_boost_multiplier": 0.5,
-      "saturation": 1.0
+        "glare_threshold": 220, "shadow_lift": 1.0, "edge_boost_multiplier": 0.5, "saturation": 1.0,
+        "wasm_denoise": 0.4, "wasm_detail": 0.2, "wasm_tone_map": 0.2
     },
     "hdr_natural": {
         "glare_threshold": 220,
@@ -512,59 +512,59 @@ window.APP_DATABASE = {
         "edge_boost_multiplier": 0.0,   // TIDAK ada penajaman
         "saturation": 1.0               // TIDAK ada boost warna
     },
+    "hdr_bright": {
+        "glare_threshold": 240,
+        "shadow_lift": 1.0,
+        "edge_boost_multiplier": 0.5,
+        "saturation": 1.0,
+        "wasm_denoise": 0.5,
+        "wasm_detail": 0.3,
+        "wasm_tone_map": 1.0  // <--- 1.0 artinya pendorong cahaya maksimal!
+    },
+    "super_zoom": {
+        "glare_threshold": 220,
+        "shadow_lift": 1.0,
+        "edge_boost_multiplier": 1.0,
+        "saturation": 1.0,
+        "wasm_denoise": 0.2,
+        "wasm_detail": 0.6,
+        "wasm_tone_map": 0.2  // Tone map kecil karena fokus ke ketajaman
+    },
     "natural": {
-      "glare_threshold": 250,
-      "shadow_lift": 1.05,
-      "edge_boost_multiplier": 0.5,
-      "saturation": 1.08
+        "glare_threshold": 245, "shadow_lift": 1.15, "edge_boost_multiplier": 0.3, "saturation": 0.95,
+        "wasm_denoise": 0.4, "wasm_detail": 0.3, "wasm_tone_map": 0.4
     },
     "kain": {
-      "glare_threshold": 190,
-      "shadow_lift": 1.2,
-      "edge_boost_multiplier": 1.2,
-      "saturation": 1.0
+        "glare_threshold": 190, "shadow_lift": 1.2, "edge_boost_multiplier": 1.2, "saturation": 1.0,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     },
     "jendela": {
-      "glare_threshold": 160,
-      "shadow_lift": 1.1,
-      "edge_boost_multiplier": 0.8,
-      "saturation": 1.0
+        "glare_threshold": 160, "shadow_lift": 1.1, "edge_boost_multiplier": 0.8, "saturation": 1.0,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     },
     "teks": {
-      "glare_threshold": 200,
-      "shadow_lift": 0.9,
-      "edge_boost_multiplier": 1.8,
-      "saturation": 0.4
+        "glare_threshold": 200, "shadow_lift": 0.9, "edge_boost_multiplier": 1.8, "saturation": 0.4,
+        "wasm_denoise": 0.1, "wasm_detail": 1.0, "wasm_tone_map": 0.1
     },
     "gelap": {
-      "glare_threshold": 255,
-      "shadow_lift": 1.2,
-      "edge_boost_multiplier": 0.0,
-      "saturation": 1.0
+        "glare_threshold": 255, "shadow_lift": 1.2, "edge_boost_multiplier": 0.0, "saturation": 1.0,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     },
     "malam": {
-      "glare_threshold": 240,
-      "shadow_lift": 1.4,
-      "edge_boost_multiplier": 0.6,
-      "saturation": 1.0
+        "glare_threshold": 240, "shadow_lift": 1.4, "edge_boost_multiplier": 0.6, "saturation": 1.0,
+        "wasm_denoise": 0.7, "wasm_detail": 0.2, "wasm_tone_map": 0.9
     },
     "objek": {
-      "glare_threshold": 220,
-      "shadow_lift": 1.1,
-      "edge_boost_multiplier": 1.0,
-      "saturation": 1.0
+        "glare_threshold": 220, "shadow_lift": 1.1, "edge_boost_multiplier": 1.0, "saturation": 1.0,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     },
     "zoom": {
-      "glare_threshold": 220,
-      "shadow_lift": 1.1,
-      "edge_boost_multiplier": 1.5,
-      "saturation": 1.0
+        "glare_threshold": 220, "shadow_lift": 1.1, "edge_boost_multiplier": 1.5, "saturation": 1.0,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     },
     "ketajaman": {
-      "glare_threshold": 225,
-      "shadow_lift": 1.05,
-      "edge_boost_multiplier": 2.0,
-      "saturation": 1.05
+        "glare_threshold": 225, "shadow_lift": 1.05, "edge_boost_multiplier": 5.0, "saturation": 1.05,
+        "wasm_denoise": 0.2, "wasm_detail": 0.8, "wasm_tone_map": 0.3
     }
   }
 };
