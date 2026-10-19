@@ -1405,121 +1405,43 @@ window.addEventListener('beforeunload', () => {
     }
 });
 
-// SMART AUTO CAPTURE (Deteksi Gelap/Terang + HDR)
+// SMART CAPTURE: Membaca Perintah dari database.js
 async function captureHDRBracketing(video, canvas, w, h) {
-    console.log("📸 Memulai proses pengambilan gambar...");
+    const feature = appMemory.activeFeature;
+    const profile = appMemory.db.ai_reconstruction_profiles[feature] || appMemory.db.ai_reconstruction_profiles["hdr_natural"];
+    
+    console.log(`📸 Memulai proses: ${feature}...`);
     const t0 = performance.now();
 
     stopExposureStabilizer();
 
-    // ⭐ 1. CEK KECERAHAN RUANGAN (Smart Auto)
-    const testCanvas = document.createElement('canvas');
-    testCanvas.width = 10; testCanvas.height = 10;
-    const testCtx = testCanvas.getContext('2d');
-    testCtx.drawImage(video, 0, 0, 10, 10);
-    const testPixels = testCtx.getImageData(0, 0, 10, 10).data;
-    let totalLum = 0;
-    for (let i = 0; i < testPixels.length; i += 4) {
-        totalLum += (0.2126 * testPixels[i] + 0.7152 * testPixels[i+1] + 0.0722 * testPixels[i+2]);
-    }
-    const avgLum = totalLum / 100;
-
     const track = window.cameraTrack;
     const originalEV = appMemory.currentHardwareExposure || 0;
-    const caps = track && track.getCapabilities ? track.getCapabilities() : {};
-    const hasExposure = !!(caps.exposureCompensation);
+    const hasExposure = !!(track && track.getCapabilities && track.getCapabilities().exposureCompensation);
 
-    // JALUR A: RUANGAN GELAP (Mode Night - 1 Frame + WASM)
-    if (avgLum < 60) {
-        console.log("🌙 Ruangan gelap terdeteksi. Menggunakan Mode Night (1 Frame Bersih).");
-        
-        // Pastikan EV kembali ke 0
-        if (hasExposure) {
-            try { await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] }); } catch(e){}
-            await new Promise(r => setTimeout(r, 200));
-        }
-
-        // Ambil 1 frame
-        const temp = document.createElement('canvas');
-        temp.width = w; temp.height = h;
-        const tCtx = temp.getContext('2d');
-        tCtx.drawImage(video, 0, 0, w, h);
-        let merged = tCtx.getImageData(0, 0, w, h).data;
-
-        // Panggil WASM untuk menerangkan
-        if (typeof Module !== 'undefined') {
-            const size = w * h * 4;
-            const ptr = Module._malloc(size);
-            
-            // 1. Local Tone Map Sangat Kuat (Angkat bayangan)
-            if (Module._local_tone_map) {
-                Module.HEAPU8.set(merged, ptr);
-                Module._local_tone_map(ptr, w, h, 1.0); 
-                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
-            }
-            
-            // 2. Detail Rendah (0.15) Agar noise tidak muncul
-            if (Module._multi_scale_detail) {
-                Module.HEAPU8.set(merged, ptr);
-                Module._multi_scale_detail(ptr, w, h, 0.15); 
-                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
-            }
-
-            // 3. Denoise Kuat (0.7) Hapus bintik
-            if (Module._chroma_denoise) {
-                Module.HEAPU8.set(merged, ptr);
-                Module._chroma_denoise(ptr, w, h, 0.7); 
-                merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
-            }
-            Module._free(ptr);
-        }
-
-        // Tulis ke Canvas & Simpan
-        const ctx = canvas.getContext('2d');
-        ctx.putImageData(new ImageData(merged, w, h), 0, 0);
-        
-        const fmt = appMemory.defaultFormatFoto || "webp";
-        let pk = (fmt === "jpeg") ? "jpeg_hr" : "webp_max";
-        const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
-        const url = canvas.toDataURL(prof.mime_type, prof.quality);
-        saveImageToAppGallery(url);
-
-        console.log(`✅ Mode Night selesai: ${(performance.now() - t0).toFixed(0)}ms`);
-        
-        startExposureStabilizer();
-        setTimeout(() => {
-            const sb = document.getElementById('shutter_btn');
-            if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
-        }, 500);
-        
-        return; // BERHENTI, JANGAN LANJUT KE HDR
+    // ⭐ JIKA MODE SUPER ZOOM (15 FRAME)
+    if (feature === "super_zoom") {
+        return captureSuperZoom(video, canvas, w, h, profile);
     }
 
-    // JALUR B: RUANGAN TERANG (Mode HDR 3 Frame - Anti Ghosting)
-    console.log("☀️ Ruangan terang terdeteksi. Menggunakan Mode HDR 3-Frame.");
-
-    // Reset ke EV 0
+    // MODE HDR (HDR Natural / HDR Bright)
     if (hasExposure) {
-        try {
-            await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] });
-            await new Promise(r => setTimeout(r, 200));
-        } catch (e) { /* ignore */ }
+        try { await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] }); } catch(e){}
+        await new Promise(r => setTimeout(r, 200));
     }
 
-    // Hanya 3 Frame untuk mencegah goyangan/ghosting
-    const evs = [-2, 0, 2]; 
+    // Tentukan jumlah frame berdasarkan mode
+    let evs = [-2, 0, 2]; // Standar 3 frame
+    if (feature === "hdr_bright") evs = [-2, -1, 0, 1, 2]; // HDR Terang pakai 5 frame
+
     const frames = [];
-    const settleMs = hasExposure ? 200 : 50;
+    const settleMs = hasExposure ? 250 : 50;
 
     for (const ev of evs) {
         try {
-            if (hasExposure) {
-                await track.applyConstraints({ advanced: [{ exposureCompensation: ev }] });
-            }
+            if (hasExposure) await track.applyConstraints({ advanced: [{ exposureCompensation: ev }] });
             await new Promise(r => setTimeout(r, settleMs));
-        } catch (e) {
-            console.warn(`[HDR] Gagal set EV ${ev}:`, e.message);
-        }
+        } catch (e) {}
 
         const temp = document.createElement('canvas');
         temp.width = w; temp.height = h;
@@ -1529,75 +1451,150 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }
 
     if (hasExposure) {
-        try {
-            await track.applyConstraints({ advanced: [{ exposureCompensation: originalEV }] });
-        } catch (e) { /* ignore */ }
+        try { await track.applyConstraints({ advanced: [{ exposureCompensation: originalEV }] }); } catch(e){}
     }
 
-    console.log(`📸 3 frame terambil: ${(performance.now() - t0).toFixed(0)}ms`);
-
-    // 1. Merge HDR via WASM
-    const t1 = performance.now();
+    // Merge HDR via WASM
     let merged = mergeHDRFramesWasm(frames, w, h);
     
-    // 2. Tarik Warna Asli dari Frame Normal (EV 0) agar tidak over-saturated
+    // Tarik Warna Asli dari Frame Tengah
     const baseFrame = frames[Math.floor(frames.length / 2)]; 
     if (baseFrame && typeof matchColorToBase === 'function') {
-        console.log("🎨 Menyelaraskan warna HDR dengan Normal...");
         matchColorToBase(merged, baseFrame.data, w, h);
     }
-    console.log(`✅ Merge & Color Match: ${(performance.now() - t1).toFixed(0)}ms`);
 
-    // 3. POST-PROCESSING WASM
+    // POST-PROCESSING WASM (Membaca angka dari database.js)
     if (typeof Module !== 'undefined') {
         const size = w * h * 4;
         const ptr = Module._malloc(size);
         
-        // A. Local Tone Map (0.6) - Aman
         if (Module._local_tone_map) {
             Module.HEAPU8.set(merged, ptr);
-            Module._local_tone_map(ptr, w, h, 0.6); 
+            Module._local_tone_map(ptr, w, h, profile.wasm_tone_map || 0.6); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // B. Multi-Scale Detail (0.3) - Bikin tajam tanpa noise kasar
         if (Module._multi_scale_detail) {
             Module.HEAPU8.set(merged, ptr);
-            Module._multi_scale_detail(ptr, w, h, 0.3); 
+            Module._multi_scale_detail(ptr, w, h, profile.wasm_detail || 0.3); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
         
-        // C. Chroma Denoise (0.5) - Bersihkan warna
         if (Module._chroma_denoise) {
             Module.HEAPU8.set(merged, ptr);
-            Module._chroma_denoise(ptr, w, h, 0.5); 
+            Module._chroma_denoise(ptr, w, h, profile.wasm_denoise || 0.4); 
             merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
-        
         Module._free(ptr);
     }
     
-    // Tulis ke Canvas
-    const ctx = canvas.getContext('2d');
-    ctx.putImageData(new ImageData(merged, w, h), 0, 0);
+    finishCapture(canvas, merged, w, h, t0);
+}
 
-    // Simpan
-    const fmt = appMemory.defaultFormatFoto || "webp";
-    let pk = "webp_max";
-    if (fmt === "jpeg") pk = "jpeg_hr";
-    else if (fmt === "png") pk = "png";
-    else if (fmt === "pdf") pk = "pdf";
+// MODE SUPER ZOOM (15 Frame -> Super Resolution + Lanczos)
+async function captureSuperZoom(video, canvas, w, h, profile) {
+    console.log("🔬 Memulai Super Zoom (15 Frame)... Tahan HP diam.");
+    const t0 = performance.now();
+    const track = window.cameraTrack;
 
-    if (fmt === "pdf") {
-        prosesSimpanSebagaiPDF(canvas);
-    } else {
-        const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
-        const url = canvas.toDataURL(prof.mime_type, prof.quality);
-        saveImageToAppGallery(url);
+    // Pastikan EV 0
+    if (track && track.getCapabilities().exposureCompensation) {
+        try { await track.applyConstraints({ advanced: [{ exposureCompensation: 0 }] }); } catch(e){}
+    }
+    await new Promise(r => setTimeout(r, 300));
+
+    const frames = [];
+    const frameCount = 15;
+
+    // Ambil 15 frame cepat
+    for (let i = 0; i < frameCount; i++) {
+        const temp = document.createElement('canvas');
+        temp.width = w; temp.height = h;
+        const tCtx = temp.getContext('2d');
+        tCtx.drawImage(video, 0, 0, w, h);
+        frames.push(tCtx.getImageData(0, 0, w, h));
+        await new Promise(r => setTimeout(r, 80)); // Jeda 80ms antar frame
     }
 
-    console.log(`✅ Total HDR: ${(performance.now() - t0).toFixed(0)}ms`);
+    console.log(`📸 15 Frame terambil: ${(performance.now() - t0).toFixed(0)}ms`);
 
+    if (typeof Module === 'undefined') return finishCapture(canvas, frames[7].data, w, h, t0);
+
+    // 1. ALIGNMENT 15 FRAME
+    const frameSize = w * h * 4;
+    const framePtrs = [];
+    for (let i = 0; i < frames.length; i++) {
+        const ptr = Module._malloc(frameSize);
+        Module.HEAPU8.set(frames[i].data, ptr);
+        framePtrs.push(ptr);
+    }
+    const ptrArrayPtr = Module._malloc(frames.length * 4);
+    for (let i = 0; i < frames.length; i++) {
+        Module.HEAP32[(ptrArrayPtr >> 2) + i] = framePtrs[i];
+    }
+
+    const baseIdx = 7;
+    const shiftsArrayPtr = Module._malloc(frames.length * 2 * 4);
+    for (let i = 0; i < frames.length; i++) {
+        const dxPtr = Module._malloc(4); const dyPtr = Module._malloc(4);
+        if (i === baseIdx) {
+            Module.HEAP32[dxPtr >> 2] = 0; Module.HEAP32[dyPtr >> 2] = 0;
+        } else {
+            Module._find_shift_sad(framePtrs[baseIdx], framePtrs[i], w, h, 30, dxPtr, dyPtr);
+        }
+        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2]     = Module.HEAP32[dxPtr >> 2];
+        Module.HEAP32[(shiftsArrayPtr >> 2) + i * 2 + 1] = Module.HEAP32[dyPtr >> 2];
+        Module._free(dxPtr); Module._free(dyPtr);
+    }
+
+    // 2. MERGE FRAMES (Rata-rata 15 frame untuk detail super)
+    const outPtr = Module._malloc(frameSize);
+    Module._merge_frames_avg(ptrArrayPtr, frames.length, shiftsArrayPtr, w, h, outPtr);
+
+    let merged = new Uint8ClampedArray(frameSize);
+    merged.set(Module.HEAPU8.subarray(outPtr, outPtr + frameSize));
+
+    // Cleanup memori awal
+    for (const p of framePtrs) Module._free(p);
+    Module._free(ptrArrayPtr); Module._free(shiftsArrayPtr); Module._free(outPtr);
+
+    // 3. LANCZOS UPSCALE (Perbesar 2x Resolusi)
+    const newW = w * 2;
+    const newH = h * 2;
+    const upscaleSize = newW * newH * 4;
+    
+    console.log(`🔍 Lanczos Upscale ke ${newW}x${newH}...`);
+    const srcPtr = Module._malloc(frameSize);
+    const dstPtr = Module._malloc(upscaleSize);
+    Module.HEAPU8.set(merged, srcPtr);
+    
+    Module._lanczos_upscale(srcPtr, dstPtr, w, h, newW, newH);
+    
+    let upscaled = new Uint8ClampedArray(upscaleSize);
+    upscaled.set(Module.HEAPU8.subarray(dstPtr, dstPtr + upscaleSize));
+    Module._free(srcPtr); Module._free(dstPtr);
+
+    // 4. POST-PROCESSING (Detail & Denoise pada resolusi tinggi)
+    const ptr = Module._malloc(upscaleSize);
+    Module.HEAPU8.set(upscaled, ptr);
+    
+    if (Module._multi_scale_detail) Module._multi_scale_detail(ptr, newW, newH, profile.wasm_detail || 0.6);
+    if (Module._chroma_denoise) Module._chroma_denoise(ptr, newW, newH, profile.wasm_denoise || 0.2);
+    
+    upscaled.set(Module.HEAPU8.subarray(ptr, ptr + upscaleSize));
+    Module._free(ptr);
+
+    // Tulis ke canvas dengan resolusi baru
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = newW; tempCanvas.height = newH;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.putImageData(new ImageData(upscaled, newW, newH), 0, 0);
+
+    // Simpan
+    const url = tempCanvas.toDataURL("image/jpeg", 0.95);
+    saveImageToAppGallery(url);
+
+    console.log(`✅ Super Zoom selesai: ${(performance.now() - t0).toFixed(0)}ms`);
     startExposureStabilizer();
     setTimeout(() => {
         const sb = document.getElementById('shutter_btn');
@@ -1605,6 +1602,21 @@ async function captureHDRBracketing(video, canvas, w, h) {
     }, 500);
 }
 
+// Fungsi bantuan untuk menyelesaikan proses HDR standar
+function finishCapture(canvas, mergedData, w, h, t0) {
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(new ImageData(mergedData, w, h), 0, 0);
+    const url = canvas.toDataURL("image/jpeg", 0.92);
+    saveImageToAppGallery(url);
+    console.log(`✅ Total proses: ${(performance.now() - t0).toFixed(0)}ms`);
+    startExposureStabilizer();
+    setTimeout(() => {
+        const sb = document.getElementById('shutter_btn');
+        if (sb) { sb.disabled = false; sb.style.pointerEvents = "auto"; sb.style.opacity = "1"; }
+    }, 500);
+}
+
+// ⭐ Pastikan fungsi ini ada di file brain.js kamu (untuk Color Match)
 function matchColorToBase(mergedData, baseData, w, h) {
     for (let i = 0; i < w * h * 4; i += 4) {
         const yMerged = 0.2126 * mergedData[i] + 0.7152 * mergedData[i+1] + 0.0722 * mergedData[i+2];
