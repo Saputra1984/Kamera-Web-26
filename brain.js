@@ -763,13 +763,9 @@ function ambilFotoWebp() {
     const video = document.getElementById('camera-view');
     const canvas = document.getElementById('processing-canvas');
 
-    if (!video || !canvas) {
-        console.error("Komponen kamera tidak ditemukan.");
-        const shutterBtn = document.getElementById('shutter_btn');
-        if (shutterBtn) { shutterBtn.disabled = false; shutterBtn.style.pointerEvents = "auto"; }
-        return;
-    }
+    if (!video || !canvas) return;
 
+    // Efek Flash
     const pipeline = window.APP_DATABASE.shutter_pipeline;
     const flashDiv = document.createElement('div');
     flashDiv.style.cssText = pipeline.visual_effects.flash_screen_css;
@@ -785,33 +781,76 @@ function ambilFotoWebp() {
     canvas.width = w;
     canvas.height = h;
 
-    const config = (appMemory.activeFeature === "normal")
-        ? { frame_count: 1, interval_ms: 0 }
-        : appMemory.db.camera_features.burst_mode;
-
-    let frameBuffer = [];
-    let count = 0;
-
-    // ⭐ Mode HDR Natural — pipeline terpisah
-    if (appMemory.activeFeature === "hdr_natural") {
+    // ⭐ 1. CEK MODE: Jika HDR/SuperZoom, lempar ke fungsi HDR
+    if (appMemory.activeFeature === "hdr_natural" || 
+        appMemory.activeFeature === "hdr_bright" || 
+        appMemory.activeFeature === "super_zoom") {
         captureHDRBracketing(video, canvas, w, h);
         return;
     }
 
-    const burst = setInterval(() => {
-        if (count < config.frame_count) {
-            const temp = document.createElement('canvas');
-            temp.width = w;
-            temp.height = h;
-            const tCtx = temp.getContext('2d');
-            tCtx.drawImage(video, 0, 0, w, h);
-            frameBuffer.push(tCtx.getImageData(0, 0, w, h));
-            count++;
-        } else {
-            clearInterval(burst);
-            prosesPemadatanMataManusia(frameBuffer, w, h);
+    // ⭐ 2. MODE LAINNYA (Normal, Teks, Kain, dll)
+    // Ambil 1 frame bersih
+    const temp = document.createElement('canvas');
+    temp.width = w; temp.height = h;
+    const tCtx = temp.getContext('2d');
+    tCtx.drawImage(video, 0, 0, w, h);
+    let merged = tCtx.getImageData(0, 0, w, h).data;
+
+    // Ambil parameter dari database.js
+    const feature = appMemory.activeFeature || "normal";
+    const profile = appMemory.db.ai_reconstruction_profiles[feature] || appMemory.db.ai_reconstruction_profiles["normal"];
+
+    // ⭐ 3. PROSES DENGAN WASM (Bukan JS lagi)
+    if (typeof Module !== 'undefined' && Module._local_tone_map) {
+        const size = w * h * 4;
+        const ptr = Module._malloc(size);
+        
+        // A. Tone Map (Terangkan/Gelapkan sesuai mode)
+        Module.HEAPU8.set(merged, ptr);
+        Module._local_tone_map(ptr, w, h, profile.wasm_tone_map || 0.4); 
+        merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        
+        // B. Detail (Pertajam sesuai mode)
+        if (Module._multi_scale_detail) {
+            Module.HEAPU8.set(merged, ptr);
+            Module._multi_scale_detail(ptr, w, h, profile.wasm_detail || 0.3); 
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
         }
-    }, config.interval_ms);
+        
+        // C. Denoise (Haluskan noise sesuai mode)
+        if (Module._chroma_denoise) {
+            Module.HEAPU8.set(merged, ptr);
+            Module._chroma_denoise(ptr, w, h, profile.wasm_denoise || 0.4); 
+            merged.set(Module.HEAPU8.subarray(ptr, ptr + size));
+        }
+        
+        Module._free(ptr);
+        console.log(`✅ Mode ${feature} diproses via WASM.`);
+    } else {
+        // Fallback jika WASM gagal load (pakai JS lama)
+        applyBilateralSharpening(merged, w, h);
+    }
+
+    // 4. Tulis ke Canvas & Simpan
+    const ctx = canvas.getContext('2d');
+    ctx.putImageData(new ImageData(merged, w, h), 0, 0);
+    
+    const fmt = appMemory.defaultFormatFoto || "webp";
+    let pk = (fmt === "jpeg") ? "jpeg_hr" : "webp_max";
+    const prof = window.APP_DATABASE.shutter_pipeline.processing_profiles[pk];
+    const url = canvas.toDataURL(prof.mime_type, prof.quality);
+    saveImageToAppGallery(url);
+
+    // Pulihkan tombol
+    setTimeout(() => {
+        const shutterBtn = document.getElementById('shutter_btn');
+        if (shutterBtn) {
+            shutterBtn.disabled = false;
+            shutterBtn.style.pointerEvents = "auto";
+            shutterBtn.style.opacity = "1";
+        }
+    }, 500);
 }
 
 function prosesPemadatanMataManusia(buffers, w, h) {
